@@ -5,6 +5,8 @@ pokemon-game-data/*
 !pokemon-game-data/
 !pokemon-game-data/.gitkeep
 
+.cursor
+
 # Database files
 pokemon.db
 *.db

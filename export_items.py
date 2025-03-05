@@ -68,8 +68,17 @@ def parse_item_names():
 
     # Extract item names
     item_names = []
+
+    # Find the position of the first assert_list_length NUM_ITEMS
+    assert_pos = content.find("assert_list_length NUM_ITEMS")
+    if assert_pos != -1:
+        # Only parse content up to the assert statement
+        content_to_parse = content[:assert_pos]
+    else:
+        content_to_parse = content
+
     pattern = r'li\s+"([^"]+)"'
-    matches = re.finditer(pattern, content)
+    matches = re.finditer(pattern, content_to_parse)
 
     for match in matches:
         item_name = match.group(1)
@@ -244,10 +253,6 @@ def main():
 
     # Insert items into database
     for i, name in enumerate(item_names):
-        # Skip if beyond the number of actual items (floor items)
-        if i >= len(item_prices):
-            break
-
         item_id = i + 1  # Item IDs start at 1
         short_name = item_id_to_name.get(item_id, f"UNKNOWN_{item_id}")
         price = item_prices[i]
