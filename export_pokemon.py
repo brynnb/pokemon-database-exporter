@@ -3,6 +3,7 @@ import re
 import sqlite3
 import glob
 from pathlib import Path
+from utils.pokemon_utils import SPECIAL_NAME_MAPPINGS, normalize_pokemon_name
 
 # Constants
 POKEMON_DATA_DIR = "pokemon-game-data/data/pokemon"
@@ -22,7 +23,9 @@ EVOS_PATTERN = re.compile(
 EVOLVE_LEVEL_PATTERN = re.compile(r"\s*db EVOLVE_LEVEL, (\d+), (\w+)")
 EVOLVE_ITEM_PATTERN = re.compile(r"\s*db EVOLVE_ITEM, [^,]+, \d+, (\w+)")
 EVOLVE_TRADE_PATTERN = re.compile(r"\s*db EVOLVE_TRADE, \d+, (\w+)")
-CRY_PATTERN = re.compile(r"\s*mon_cry [^,]+, \$([0-9A-F]+), \$([0-9A-F]+) ; (\w+)")
+CRY_PATTERN = re.compile(r"\s*mon_cry [^,]+, \$([0-9A-F]+), \$([0-9A-F]+) ; (.+)$")
+
+# Special character name mappings - Removed and imported from utils.pokemon_utils
 
 
 def create_database():
@@ -94,7 +97,8 @@ def extract_base_stats():
     pokemon_stats = {}
 
     for stats_file in glob.glob(f"{BASE_STATS_DIR}/*.asm"):
-        pokemon_name = os.path.basename(stats_file).replace(".asm", "").upper()
+        pokemon_name = os.path.basename(stats_file).replace(".asm", "")
+        normalized_name = normalize_pokemon_name(pokemon_name)
 
         with open(stats_file, "r") as f:
             content = f.read()
@@ -103,6 +107,7 @@ def extract_base_stats():
             dex_id_match = re.search(r"db DEX_(\w+)", content)
             if dex_id_match:
                 dex_id = dex_id_match.group(1)
+                normalized_dex_id = normalize_pokemon_name(dex_id)
             else:
                 continue
 
@@ -144,8 +149,8 @@ def extract_base_stats():
                     "NO_MOVE",
                 )
 
-            pokemon_stats[dex_id] = {
-                "name": dex_id,
+            pokemon_stats[normalized_dex_id] = {
+                "name": normalized_dex_id,
                 "hp": hp,
                 "atk": atk,
                 "def": def_,
@@ -169,15 +174,22 @@ def extract_cries():
     cries = {}
 
     with open(f"{POKEMON_DATA_DIR}/cries.asm", "r") as f:
-        content = f.read()
+        lines = f.readlines()
 
-        for match in CRY_PATTERN.finditer(content):
-            pitch, length, name = match.groups()
-            cries[name.upper()] = {
-                "base_cry": match.start(),  # Using position as a proxy for base_cry
-                "cry_pitch": int(pitch, 16),
-                "cry_length": int(length, 16),
-            }
+        # Process each line
+        for line in lines:
+            if "mon_cry" in line:
+                match = CRY_PATTERN.search(line)
+                if match:
+                    pitch, length, name = match.groups()
+                    name = name.strip()  # Strip any whitespace
+                    normalized_name = normalize_pokemon_name(name)
+
+                    cries[normalized_name] = {
+                        "base_cry": 0,  # Using 0 as a placeholder
+                        "cry_pitch": int(pitch, 16),
+                        "cry_length": int(length, 16),
+                    }
 
     return cries
 
@@ -195,14 +207,15 @@ def extract_dex_entries():
             match = re.search(r"\s*dw (\w+)DexEntry", line)
             if match:
                 dex_entry_name = match.group(1)
-                name_to_dex_entry[dex_entry_name.upper()] = dex_entry_name
+                normalized_name = normalize_pokemon_name(dex_entry_name)
+                name_to_dex_entry[normalized_name] = dex_entry_name
 
         # Now extract the dex entries
         for match in DEX_ENTRY_PATTERN.finditer(content):
             dex_entry_name, poke_type, height_ft, height_in, weight = match.groups()
-            pokemon_name = dex_entry_name.upper()
+            normalized_name = normalize_pokemon_name(dex_entry_name)
 
-            dex_entries[pokemon_name] = {
+            dex_entries[normalized_name] = {
                 "pokedex_type": poke_type,
                 "height": f"{height_ft},{height_in}",
                 "weight": int(weight),
@@ -220,7 +233,8 @@ def extract_dex_text():
 
         # Extract all Pokédex entries
         for entry_match in re.finditer(r"_(\w+)DexEntry::([\s\S]*?)dex", content):
-            pokemon_name = entry_match.group(1).upper()
+            pokemon_name = entry_match.group(1)
+            normalized_name = normalize_pokemon_name(pokemon_name)
             entry_text = entry_match.group(2)
 
             # Extract all text and next lines
@@ -238,7 +252,7 @@ def extract_dex_text():
                     text_parts.append(page_match.group(1))
 
             # Join all text parts with spaces
-            dex_text[pokemon_name] = " ".join(text_parts)
+            dex_text[normalized_name] = " ".join(text_parts)
 
     return dex_text
 
@@ -256,11 +270,13 @@ def extract_evolutions():
             match = re.search(r"\s*dw (\w+)EvosMoves", line)
             if match:
                 evo_entry_name = match.group(1)
-                name_to_evo_entry[evo_entry_name.upper()] = evo_entry_name
+                normalized_name = normalize_pokemon_name(evo_entry_name)
+                name_to_evo_entry[normalized_name] = evo_entry_name
 
         # Now extract the evolution data
         for match in re.finditer(r"(\w+)EvosMoves:\s*\n; Evolutions", content):
-            pokemon_name = match.group(1).upper()
+            pokemon_name = match.group(1)
+            normalized_name = normalize_pokemon_name(pokemon_name)
 
             # Find the start of the evolution block
             start_pos = match.end()
@@ -280,20 +296,20 @@ def extract_evolutions():
             level_match = EVOLVE_LEVEL_PATTERN.search(evo_block)
             if level_match:
                 evolve_level = int(level_match.group(1))
-                evolve_pokemon = level_match.group(2)
+                evolve_pokemon = normalize_pokemon_name(level_match.group(2))
 
             # Check for item evolution
             item_match = EVOLVE_ITEM_PATTERN.search(evo_block)
             if item_match:
-                evolve_pokemon = item_match.group(1)
+                evolve_pokemon = normalize_pokemon_name(item_match.group(1))
 
             # Check for trade evolution
             trade_match = EVOLVE_TRADE_PATTERN.search(evo_block)
             if trade_match:
-                evolve_pokemon = trade_match.group(1)
+                evolve_pokemon = normalize_pokemon_name(trade_match.group(1))
                 evolves_from_trade = True
 
-            evolutions[pokemon_name] = {
+            evolutions[normalized_name] = {
                 "evolve_level": evolve_level,
                 "evolve_pokemon": evolve_pokemon,
                 "evolves_from_trade": evolves_from_trade,
@@ -324,7 +340,7 @@ def extract_menu_icons():
                 icon_match = re.search(r"nybble (ICON_\w+)", line)
                 if icon_match and pokemon_index < len(pokemon_names):
                     icon = icon_match.group(1)
-                    pokemon_name = pokemon_names[pokemon_index]
+                    pokemon_name = normalize_pokemon_name(pokemon_names[pokemon_index])
                     icons[pokemon_name] = icon
                     pokemon_index += 1
 
@@ -353,7 +369,7 @@ def extract_palettes():
                 palette_match = re.search(r"db (PAL_\w+)", line)
                 if palette_match and pokemon_index < len(pokemon_names):
                     palette = palette_match.group(1)
-                    pokemon_name = pokemon_names[pokemon_index]
+                    pokemon_name = normalize_pokemon_name(pokemon_names[pokemon_index])
                     palettes[pokemon_name] = palette
                     pokemon_index += 1
 

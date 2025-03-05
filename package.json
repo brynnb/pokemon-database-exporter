@@ -6,7 +6,7 @@
     "scripts": {
         "export": "node export.js",
         "export:items": "python3 export_items.py",
-        "postinstall": "rm -rf pokemon-game-data && git clone https://github.com/pret/pokered.git pokemon-game-data"
+        "postinstall": "rm -rf pokemon-game-data && git clone https://github.com/pret/pokered.git pokemon-game-data && touch pokemon-game-data/.gitkeep"
     },
     "author": "",
     "license": "MIT",

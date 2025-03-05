@@ -51,3 +51,15 @@ Export move data:
 ```bash
 python3 export_moves.py
 ```
+
+### Pokémon Name Utilities
+
+```python
+from utils.pokemon_utils import normalize_pokemon_name, SPECIAL_NAME_MAPPINGS
+
+# Convert special Pokémon names to their constant representation
+normalized = normalize_pokemon_name("NidoranM")  # Returns "NIDORAN_M"
+normalized = normalize_pokemon_name("Farfetch'd")  # Returns "FARFETCHD"
+```
+
+The `SPECIAL_NAME_MAPPINGS` dictionary contains mappings for Pokémon with special characters in their names.
