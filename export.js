@@ -36,6 +36,46 @@ async function runExports() {
     log("Move export failed");
   }
 
+  // Run map exports
+  const mapsSuccess = runCommand("python3 export_map.py");
+  if (!mapsSuccess) {
+    log("Map export failed");
+  } else {
+    log("Map export successful");
+
+    // Render some popular maps
+    const popularMaps = [
+      "PALLET_TOWN",
+      "VIRIDIAN_CITY",
+      "PEWTER_CITY",
+      "CERULEAN_CITY",
+      "CELADON_CITY",
+      "LAVENDER_TOWN",
+      "VERMILION_CITY",
+      "SAFFRON_CITY",
+      "CINNABAR_ISLAND",
+      "INDIGO_PLATEAU",
+      "BIKE_SHOP",
+    ];
+
+    // Create maps directory if it doesn't exist
+    runCommand("mkdir -p exported_maps");
+
+    // Render each map
+    let renderedCount = 0;
+    for (const map of popularMaps) {
+      log(`Rendering map: ${map}`);
+      const renderSuccess = runCommand(
+        `python3 export_map.py --render ${map} --output exported_maps/${map.toLowerCase()}.png`
+      );
+      if (renderSuccess) {
+        renderedCount++;
+      }
+    }
+
+    log(`Successfully rendered ${renderedCount} of ${popularMaps.length} maps`);
+  }
+
   log("All exports completed");
 }
 
