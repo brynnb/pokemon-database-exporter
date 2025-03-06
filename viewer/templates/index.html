@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pokemon Tile Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        select, button {
+            padding: 8px;
+            margin-right: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .map-container {
+            position: relative;
+            overflow: auto;
+            background-color: #000;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-height: 600px;
+        }
+        .map-info {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 400px;
+            font-size: 24px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pokemon Tile Viewer</h1>
+        
+        <div class="controls">
+            <label for="zone-select">Select Zone:</label>
+            <select id="zone-select">
+                {% for zone in zones %}
+                <option value="{{ zone.id }}" {% if zone.id == default_zone_id %}selected{% endif %}>
+                    {{ zone.id }}: {{ zone.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <button id="view-button">View Zone</button>
+            <button id="download-button">Download Image</button>
+        </div>
+        
+        <div class="map-container">
+            <div class="map-info" id="map-info"></div>
+            <div class="loading" id="loading">Loading...</div>
+            <img id="map-image" style="display: none;">
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const zoneSelect = document.getElementById('zone-select');
+            const viewButton = document.getElementById('view-button');
+            const downloadButton = document.getElementById('download-button');
+            const mapInfo = document.getElementById('map-info');
+            const loading = document.getElementById('loading');
+            const mapImage = document.getElementById('map-image');
+            
+            // Load the default zone
+            loadZone({{ default_zone_id }});
+            
+            // Event listeners
+            viewButton.addEventListener('click', function() {
+                const zoneId = zoneSelect.value;
+                loadZone(zoneId);
+            });
+            
+            downloadButton.addEventListener('click', function() {
+                const zoneId = zoneSelect.value;
+                const zoneName = zoneSelect.options[zoneSelect.selectedIndex].text;
+                downloadZoneImage(zoneId, zoneName);
+            });
+            
+            function loadZone(zoneId) {
+                loading.style.display = 'flex';
+                mapImage.style.display = 'none';
+                
+                // Get zone info
+                fetch(`/zone/${zoneId}`)
+                    .then(response => response.json())
+                    .then(zoneInfo => {
+                        mapInfo.textContent = `Zone ${zoneId}: ${zoneInfo.name} - Size: ${zoneInfo.width}x${zoneInfo.height}`;
+                        
+                        // Load the zone image
+                        mapImage.src = `/zone_image/${zoneId}?t=${new Date().getTime()}`;
+                        mapImage.onload = function() {
+                            loading.style.display = 'none';
+                            mapImage.style.display = 'block';
+                        };
+                    })
+                    .catch(error => {
+                        console.error('Error loading zone:', error);
+                        mapInfo.textContent = `Error loading zone ${zoneId}`;
+                        loading.style.display = 'none';
+                    });
+            }
+            
+            function downloadZoneImage(zoneId, zoneName) {
+                const link = document.createElement('a');
+                link.href = `/zone_image/${zoneId}`;
+                link.download = `zone_${zoneId}_${zoneName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        });
+    </script>
+</body>
+</html>
