@@ -5,6 +5,8 @@ pokemon-game-data/*
 !pokemon-game-data/
 !pokemon-game-data/.gitkeep
 
+tile_images/
+
 .cursor
 
 # Database files
