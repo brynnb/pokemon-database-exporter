@@ -21,6 +21,8 @@ from PIL import Image
 from pathlib import Path
 import sys
 import time
+import hashlib
+import io
 
 # Constants
 TILE_IMAGES_DIR = "tile_images"
@@ -65,7 +67,7 @@ def create_new_tables():
     """
     )
 
-    # Create tile_images table
+    # Create tile_images table with image_hash for deduplication
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS tile_images (
@@ -74,6 +76,7 @@ def create_new_tables():
         block_index INTEGER NOT NULL,
         position INTEGER NOT NULL,  -- 0: top-left, 1: top-right, 2: bottom-left, 3: bottom-right
         image_path TEXT NOT NULL,
+        image_hash TEXT NOT NULL,
         FOREIGN KEY (tileset_id) REFERENCES tilesets (id)
     )
     """
@@ -86,6 +89,9 @@ def create_new_tables():
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_tile_images_tileset_id ON tile_images (tileset_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tile_images_hash ON tile_images (image_hash)"
     )
 
     conn.commit()
@@ -177,12 +183,29 @@ def decode_2bpp_tile(tile_data):
     return pixels
 
 
+def get_image_hash(img):
+    """Generate a hash for an image to identify duplicates"""
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="PNG")
+    return hashlib.md5(img_bytes.getvalue()).hexdigest()
+
+
 def extract_tile_images(conn):
     """Extract 16x16 pixel tile images from the blocksets and tilesets"""
     cursor = conn.cursor()
 
     # Create directory for tile images if it doesn't exist
     os.makedirs(TILE_IMAGES_DIR, exist_ok=True)
+
+    # Clean up old files
+    print("Cleaning up old tile images...")
+    old_files = list(Path(TILE_IMAGES_DIR).glob("*.png"))
+    for old_file in old_files:
+        try:
+            os.remove(old_file)
+        except Exception as e:
+            print(f"Error removing {old_file}: {e}")
+    print(f"Removed {len(old_files)} old tile images")
 
     # Define GameBoy color palette (white, light gray, dark gray, black)
     palette = [(255, 255, 255), (192, 192, 192), (96, 96, 96), (0, 0, 0)]
@@ -192,10 +215,18 @@ def extract_tile_images(conn):
     tilesets = cursor.fetchall()
 
     tile_image_count = 0
+    unique_image_count = 0
+    duplicate_count = 0
     total_tilesets = len(tilesets)
 
     print(f"Processing {total_tilesets} tilesets...")
     start_time = time.time()
+
+    # Dictionary to track image hashes and their corresponding IDs
+    image_hash_to_id = {}
+
+    # Dictionary to map (tileset_id, block_index, position) to tile_image_id
+    block_pos_to_image_id = {}
 
     for i, (tileset_id, tileset_name) in enumerate(tilesets, 1):
         # Update progress
@@ -237,9 +268,6 @@ def extract_tile_images(conn):
         # Create dictionaries for easy lookup
         blocks = {row[0]: row[1] for row in blockset_rows}
         tiles = {row[0]: row[1] for row in tile_rows}
-
-        # Prepare batch insert
-        tile_images_data = []
 
         # Process each block to create 16x16 pixel images (4 per block)
         for block_index, block_data in blocks.items():
@@ -289,44 +317,56 @@ def extract_tile_images(conn):
                             pixel_color = palette[pixel_value]
                             img.putpixel((offset_x + px, offset_y + py), pixel_color)
 
-                # Save the image
-                image_path = f"{TILE_IMAGES_DIR}/tileset_{tileset_id}_block_{block_index}_pos_{pos_index}.png"
-                img.save(image_path)
+                # Generate hash for the image
+                img_hash = get_image_hash(img)
 
-                # Add to batch insert data
-                tile_images_data.append(
-                    (tileset_id, block_index, pos_index, image_path)
-                )
+                # Check if we've already seen this image
+                if img_hash in image_hash_to_id:
+                    # Use the existing image ID
+                    existing_image_id = image_hash_to_id[img_hash]
+                    block_pos_to_image_id[(tileset_id, block_index, pos_index)] = (
+                        existing_image_id
+                    )
+                    duplicate_count += 1
+                else:
+                    # Save the image with a sequential number
+                    image_path = f"{TILE_IMAGES_DIR}/tile_{unique_image_count}.png"
+                    img.save(image_path)
+
+                    # Insert the new image record
+                    cursor.execute(
+                        """
+                    INSERT INTO tile_images (tileset_id, block_index, position, image_path, image_hash)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                        (tileset_id, block_index, pos_index, image_path, img_hash),
+                    )
+
+                    # Get the new image ID
+                    image_id = cursor.lastrowid
+                    image_hash_to_id[img_hash] = image_id
+                    block_pos_to_image_id[(tileset_id, block_index, pos_index)] = (
+                        image_id
+                    )
+                    unique_image_count += 1
+
                 tile_image_count += 1
 
-                # Execute batch insert if we've reached the batch size
-                if len(tile_images_data) >= BATCH_SIZE:
-                    cursor.executemany(
-                        """
-                    INSERT INTO tile_images (tileset_id, block_index, position, image_path)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                        tile_images_data,
-                    )
+                # Commit periodically
+                if unique_image_count % BATCH_SIZE == 0:
                     conn.commit()
-                    tile_images_data = []
 
-        # Insert any remaining tile images
-        if tile_images_data:
-            cursor.executemany(
-                """
-            INSERT INTO tile_images (tileset_id, block_index, position, image_path)
-            VALUES (?, ?, ?, ?)
-            """,
-                tile_images_data,
-            )
-            conn.commit()
-
+    conn.commit()
     elapsed_time = time.time() - start_time
-    print(f"\nExtracted {tile_image_count} tile images in {elapsed_time:.2f} seconds")
+    print(f"\nProcessed {tile_image_count} tile images")
+    print(f"- Unique images: {unique_image_count}")
+    print(f"- Duplicate images: {duplicate_count}")
+    print(f"- Total time: {elapsed_time:.2f} seconds")
+
+    return block_pos_to_image_id
 
 
-def populate_tiles(conn):
+def populate_tiles(conn, block_pos_to_image_id):
     """Populate the tiles table based on the maps and zones tables"""
     cursor = conn.cursor()
 
@@ -413,24 +453,6 @@ def populate_tiles(conn):
             # Truncate if needed
             blk_bytes = blk_bytes[:expected_blocks]
 
-        # Get tile_image_ids for this tileset
-        cursor.execute(
-            """
-        SELECT id, block_index, position
-        FROM tile_images
-        WHERE tileset_id = ?
-        """,
-            (tileset_id,),
-        )
-
-        tile_images = cursor.fetchall()
-
-        # Create a mapping of (block_index, position) to tile_image_id
-        block_pos_to_image = {
-            (block_index, position): image_id
-            for image_id, block_index, position in tile_images
-        }
-
         # Process each block in the map
         for y in range(height):
             for x in range(width):
@@ -447,11 +469,15 @@ def populate_tiles(conn):
                         tile_x = x * 2 + (position % 2)
                         tile_y = y * 2 + (position // 2)
 
-                        # Get the tile_image_id
-                        tile_image_id = block_pos_to_image.get((block_index, position))
+                        # Get the tile_image_id from our dictionary
+                        tile_image_id = block_pos_to_image_id.get(
+                            (tileset_id, block_index, position)
+                        )
                         if not tile_image_id:
                             # Try with a default position if specific position not found
-                            tile_image_id = block_pos_to_image.get((block_index, 0))
+                            tile_image_id = block_pos_to_image_id.get(
+                                (tileset_id, block_index, 0)
+                            )
                             if not tile_image_id:
                                 continue
 
@@ -499,10 +525,10 @@ def main():
     populate_zones(conn)
 
     print("\nExtracting tile images...")
-    extract_tile_images(conn)
+    block_pos_to_image_id = extract_tile_images(conn)
 
     print("\nPopulating tiles table...")
-    populate_tiles(conn)
+    populate_tiles(conn, block_pos_to_image_id)
 
     # Print summary
     cursor = conn.cursor()
@@ -519,7 +545,7 @@ def main():
 
     print("\nSummary:")
     print(f"- Created {zone_count} zones")
-    print(f"- Extracted {tile_image_count} tile images")
+    print(f"- Extracted {tile_image_count} unique tile images")
     print(f"- Created {tile_count} tiles")
     print(f"- Total time: {total_elapsed_time:.2f} seconds")
 
