@@ -23,6 +23,7 @@ import sys
 import time
 import hashlib
 import io
+import re
 
 # Constants
 TILE_IMAGES_DIR = "tile_images"
@@ -61,6 +62,7 @@ def create_new_tables():
         y INTEGER NOT NULL,
         zone_id INTEGER NOT NULL,
         tile_image_id INTEGER NOT NULL,
+        is_overworld INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (zone_id) REFERENCES zones (id),
         FOREIGN KEY (tile_image_id) REFERENCES tile_images (id)
     )
@@ -102,54 +104,45 @@ def populate_zones(conn):
     """Populate the zones table based on the maps table"""
     cursor = conn.cursor()
 
-    # Get all maps and their tilesets
+    # Get all maps
     cursor.execute(
         """
-    SELECT m.id, m.name, m.tileset_id, t.name 
-    FROM maps m
-    JOIN tilesets t ON m.tileset_id = t.id
-    ORDER BY m.id
+    SELECT id, name, tileset_id 
+    FROM maps
+    ORDER BY id
     """
     )
 
     maps = cursor.fetchall()
 
-    # Create a zone for the overworld (all outdoor areas)
-    cursor.execute(
-        """
-    INSERT INTO zones (name, tileset_id, is_overworld)
-    VALUES (?, ?, 1)
-    """,
-        ("Overworld", 0),
-    )  # Assuming tileset_id 0 is the overworld tileset
+    # Clear existing zones
+    cursor.execute("DELETE FROM zones")
 
-    overworld_zone_id = cursor.lastrowid
+    # Process each map and create a zone for it
+    for map_id, map_name, tileset_id in maps:
+        # Format the name to match the style in map_header_pointers.asm but without the _h suffix
+        # Convert from PALLET_TOWN to PalletTown
+        formatted_name = "".join(word.capitalize() for word in map_name.split("_"))
 
-    # Track which tilesets we've already created zones for
-    processed_tilesets = {0}  # Already processed the overworld tileset
-    overworld_maps = 0
-
-    # Process each map
-    for map_id, map_name, tileset_id, tileset_name in maps:
-        # If it's the overworld tileset, add this map to the overworld zone
-        if tileset_id == 0:
-            overworld_maps += 1
-        elif tileset_id not in processed_tilesets:
-            # Create a new zone for this tileset
-            cursor.execute(
-                """
-            INSERT INTO zones (name, tileset_id, is_overworld)
-            VALUES (?, ?, 0)
-            """,
-                (tileset_name, tileset_id),
-            )
-
-            processed_tilesets.add(tileset_id)
+        cursor.execute(
+            """
+        INSERT INTO zones (name, tileset_id, is_overworld)
+        VALUES (?, ?, ?)
+        """,
+            (formatted_name, tileset_id, 1 if tileset_id == 0 else 0),
+        )
 
     conn.commit()
-    print(
-        f"Created {len(processed_tilesets)} zones ({overworld_maps} maps in Overworld zone)"
-    )
+
+    # Get count of zones
+    cursor.execute("SELECT COUNT(*) FROM zones")
+    zone_count = cursor.fetchone()[0]
+
+    # Get count of overworld zones
+    cursor.execute("SELECT COUNT(*) FROM zones WHERE is_overworld = 1")
+    overworld_count = cursor.fetchone()[0]
+
+    print(f"Created {zone_count} zones ({overworld_count} overworld zones)")
 
 
 def decode_2bpp_tile(tile_data):
@@ -367,29 +360,48 @@ def extract_tile_images(conn):
 
 
 def populate_tiles(conn, block_pos_to_image_id):
-    """Populate the tiles table based on the maps and zones tables"""
+    """Populate the tiles table based on the tiles_raw and zones tables"""
     cursor = conn.cursor()
 
+    # Clear the tiles table before repopulating
+    print("Clearing existing tiles...")
+    cursor.execute("DELETE FROM tiles")
+    conn.commit()
+
     # Get all zones
-    cursor.execute("SELECT id, tileset_id, is_overworld FROM zones")
+    cursor.execute("SELECT id, name, is_overworld FROM zones")
     zones = cursor.fetchall()
 
-    # Create a mapping of tileset_id to zone_id
-    tileset_to_zone = {}
-    overworld_zone_id = None
+    # Create a mapping of map name to zone_id and is_overworld flag
+    map_name_to_zone_info = {}
+    for zone_id, zone_name, is_overworld in zones:
+        # Convert zone name back to map format for matching
+        # e.g., "PalletTown" -> "PALLET_TOWN"
+        map_style_name = re.sub(r"([a-z])([A-Z])", r"\1_\2", zone_name).upper()
+        map_name_to_zone_info[map_style_name] = (zone_id, is_overworld)
 
-    for zone_id, tileset_id, is_overworld in zones:
-        if is_overworld:
-            overworld_zone_id = zone_id
-        else:
-            tileset_to_zone[tileset_id] = zone_id
+        # Handle special cases for routes
+        if zone_name.startswith("Route"):
+            route_num = zone_name[5:]  # Extract route number
+            route_map_name = f"ROUTE_{route_num}"
+            map_name_to_zone_info[route_map_name] = (zone_id, is_overworld)
 
-    # Get all maps
+    # Check if the tiles_raw table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tiles_raw'"
+    )
+    has_tiles_raw = cursor.fetchone() is not None
+
+    if not has_tiles_raw:
+        print("Error: tiles_raw table does not exist. Please run export_map.py first.")
+        return
+
+    # Get all maps with their zone IDs
     cursor.execute(
         """
-    SELECT id, name, width, height, tileset_id, blk_data
-    FROM maps
-    WHERE blk_data IS NOT NULL
+    SELECT m.id, m.name, m.width, m.height, m.tileset_id, z.id as zone_id, z.is_overworld
+    FROM maps m
+    LEFT JOIN zones z ON UPPER(z.name) = UPPER(REPLACE(REPLACE(m.name, '_', ''), ' ', ''))
     """
     )
 
@@ -400,14 +412,36 @@ def populate_tiles(conn, block_pos_to_image_id):
     tile_count = 0
     processed_maps = 0
     skipped_maps = 0
+    skipped_map_names = []
     start_time = time.time()
 
     # Prepare for batch insert
     tiles_data = []
 
-    for i, (map_id, map_name, width, height, tileset_id, blk_data) in enumerate(
-        maps, 1
-    ):
+    # Get the overworld map positions if available
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='overworld_map_positions'"
+    )
+    has_positions_table = cursor.fetchone() is not None
+
+    map_positions = {}
+    if has_positions_table:
+        cursor.execute(
+            "SELECT map_name, x_offset, y_offset FROM overworld_map_positions"
+        )
+        for map_name, x_offset, y_offset in cursor.fetchall():
+            map_positions[map_name] = (x_offset, y_offset)
+
+    # Process each map
+    for i, (
+        map_id,
+        map_name,
+        width,
+        height,
+        tileset_id,
+        db_zone_id,
+        db_is_overworld,
+    ) in enumerate(maps, 1):
         # Update progress every 5 maps
         if i % 5 == 0 or i == total_maps:
             sys.stdout.write(
@@ -415,87 +449,104 @@ def populate_tiles(conn, block_pos_to_image_id):
             )
             sys.stdout.flush()
 
-        # Determine which zone this map belongs to
-        if tileset_id == 0:  # Overworld tileset
-            zone_id = overworld_zone_id
+        # Get the zone_id and is_overworld flag for this map
+        zone_info = map_name_to_zone_info.get(map_name)
+
+        if zone_info:
+            zone_id, is_overworld = zone_info
         else:
-            zone_id = tileset_to_zone.get(tileset_id)
-            if not zone_id:
-                skipped_maps += 1
-                continue
+            # If not found in our mapping, use the one from the database join if available
+            if db_zone_id is not None:
+                zone_id = db_zone_id
+                is_overworld = db_is_overworld if db_is_overworld is not None else 0
+            else:
+                # Try a more flexible match
+                map_name_simplified = map_name.replace("_", "").lower()
+                for z_name, z_info in map_name_to_zone_info.items():
+                    if z_name.replace("_", "").lower() == map_name_simplified:
+                        zone_id, is_overworld = z_info
+                        break
+                else:
+                    zone_id = None
+                    is_overworld = 0
+
+        if not zone_id:
+            skipped_maps += 1
+            skipped_map_names.append(map_name)
+            continue
 
         processed_maps += 1
 
-        # Convert blk_data to a list of integers
-        try:
-            # If blk_data is already a bytes object
-            if isinstance(blk_data, bytes):
-                blk_bytes = list(blk_data)
-            # If blk_data is a string representation of hex
-            elif isinstance(blk_data, str) and all(
-                c in "0123456789ABCDEFabcdef" for c in blk_data
-            ):
-                blk_bytes = [
-                    int(blk_data[i : i + 2], 16) for i in range(0, len(blk_data), 2)
-                ]
-            else:
-                # Try to convert from binary string
-                blk_bytes = list(map(ord, blk_data))
-        except Exception as e:
+        # Get position offsets for this map if it's an overworld map
+        x_offset, y_offset = 0, 0
+        if is_overworld and map_name in map_positions:
+            x_offset, y_offset = map_positions[map_name]
+
+        # Get raw tile data for this map from tiles_raw table
+        cursor.execute(
+            """
+        SELECT x, y, block_index, tileset_id, is_overworld
+        FROM tiles_raw
+        WHERE map_id = ?
+        """,
+            (map_id,),
+        )
+
+        raw_tiles = cursor.fetchall()
+
+        if not raw_tiles:
             continue
 
-        # Verify we have the expected number of blocks
-        expected_blocks = width * height
-        if len(blk_bytes) < expected_blocks:
-            # Pad with zeros if needed
-            blk_bytes.extend([0] * (expected_blocks - len(blk_bytes)))
-        elif len(blk_bytes) > expected_blocks:
-            # Truncate if needed
-            blk_bytes = blk_bytes[:expected_blocks]
+        # Collect tiles for this map
+        map_tiles = []
 
-        # Process each block in the map
-        for y in range(height):
-            for x in range(width):
-                # Get the block index from the map data
-                block_pos = y * width + x
-                if block_pos < len(blk_bytes):
-                    block_index = blk_bytes[block_pos]
+        # Process each raw tile
+        for raw_x, raw_y, block_index, raw_tileset_id, raw_is_overworld in raw_tiles:
+            # Each block corresponds to 4 tiles (2x2 grid)
+            # We need to create 4 entries in the tiles table
+            for position in range(4):
+                # Calculate the actual x, y coordinates for this tile
+                # Each block is 2x2 tiles, so we need to multiply by 2
+                tile_x = raw_x * 2 + (position % 2) + x_offset
+                tile_y = raw_y * 2 + (position // 2)
 
-                    # Each block corresponds to 4 tiles (2x2 grid)
-                    # We need to create 4 entries in the tiles table
-                    for position in range(4):
-                        # Calculate the actual x, y coordinates for this tile
-                        # Each block is 2x2 tiles, so we need to multiply by 2
-                        tile_x = x * 2 + (position % 2)
-                        tile_y = y * 2 + (position // 2)
+                # Add y_offset if applicable (for maps with position data)
+                if map_name in map_positions:
+                    tile_y += y_offset
 
-                        # Get the tile_image_id from our dictionary
-                        tile_image_id = block_pos_to_image_id.get(
-                            (tileset_id, block_index, position)
-                        )
-                        if not tile_image_id:
-                            # Try with a default position if specific position not found
-                            tile_image_id = block_pos_to_image_id.get(
-                                (tileset_id, block_index, 0)
-                            )
-                            if not tile_image_id:
-                                continue
+                # Get the tile_image_id from our dictionary
+                tile_image_id = block_pos_to_image_id.get(
+                    (raw_tileset_id, block_index, position)
+                )
+                if not tile_image_id:
+                    # Try with a default position if specific position not found
+                    tile_image_id = block_pos_to_image_id.get(
+                        (raw_tileset_id, block_index, 0)
+                    )
+                    if not tile_image_id:
+                        continue
 
-                        # Add to batch insert data
-                        tiles_data.append((tile_x, tile_y, zone_id, tile_image_id))
-                        tile_count += 1
+                # Add to map tiles
+                map_tiles.append((tile_x, tile_y, zone_id, tile_image_id))
 
-                        # Execute batch insert if we've reached the batch size
-                        if len(tiles_data) >= BATCH_SIZE:
-                            cursor.executemany(
-                                """
-                            INSERT INTO tiles (x, y, zone_id, tile_image_id)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                                tiles_data,
-                            )
-                            conn.commit()
-                            tiles_data = []
+        # Sort map tiles by y-coordinate in descending order (top to bottom becomes bottom to top)
+        map_tiles.sort(key=lambda t: (-t[1], t[0]))
+
+        # Add to batch insert data
+        tiles_data.extend(map_tiles)
+        tile_count += len(map_tiles)
+
+        # Execute batch insert if we've reached the batch size
+        if len(tiles_data) >= BATCH_SIZE:
+            cursor.executemany(
+                """
+            INSERT INTO tiles (x, y, zone_id, tile_image_id)
+            VALUES (?, ?, ?, ?)
+            """,
+                tiles_data,
+            )
+            conn.commit()
+            tiles_data = []
 
     # Insert any remaining tiles
     if tiles_data:
@@ -508,9 +559,16 @@ def populate_tiles(conn, block_pos_to_image_id):
         )
         conn.commit()
 
+    # Print information about skipped maps
+    print(f"\nSkipped {skipped_maps} maps due to missing zone_id mapping:")
+    for i, map_name in enumerate(skipped_map_names[:20], 1):
+        print(f"  {i}. {map_name}")
+    if len(skipped_map_names) > 20:
+        print(f"  ... and {len(skipped_map_names) - 20} more")
+
     elapsed_time = time.time() - start_time
     print(
-        f"\nCreated {tile_count} tiles from {processed_maps} maps (skipped {skipped_maps} maps) in {elapsed_time:.2f} seconds"
+        f"Created {tile_count} tiles from {processed_maps} maps (skipped {skipped_maps} maps) in {elapsed_time:.2f} seconds"
     )
 
 

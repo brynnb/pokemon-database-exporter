@@ -96,43 +96,6 @@ This tool extracts all this data and stores it in a structured SQLite database, 
    - Linux: Follow instructions at https://rgbds.gbdev.io/install/
    - Windows: Download from https://github.com/gbdev/rgbds/releases
 
-## Usage
-
-### Export Map Data
-
-```
-python export_map.py
-```
-
-This will:
-
-1. Generate 2bpp files from PNG files if they don't exist
-2. Extract map data from the codebase
-3. Store the data in a SQLite database (`pokemon.db`)
-
-### Render a Map
-
-```
-python export_map.py --render MAP_NAME
-```
-
-This will render the specified map and save it as `MAP_NAME.png`.
-
-You can also specify a custom output path:
-
-```
-python export_map.py --render MAP_NAME --output output.png
-```
-
-## Database Schema
-
-The SQLite database contains the following tables:
-
-- **maps** - Map data (id, name, width, height, tileset_id, blk_data)
-- **tilesets** - Tileset data (id, name, blockset_path, tileset_path)
-- **blocksets** - Block data (id, tileset_id, block_index, block_data)
-- **tileset_tiles** - Tile data (id, tileset_id, tile_index, tile_data)
-- **map_connections** - Map connections (id, from_map_id, to_map_id, direction, offset)
 
 ## How It Works
 
@@ -147,10 +110,3 @@ The tool follows the process described in MAPLOGIC.md:
 7. Parse blockset files to extract block data
 8. Parse 2bpp files to extract tile data
 9. Store all data in a SQLite database
-
-When rendering a map, the tool:
-
-1. Retrieves the map data from the database
-2. Retrieves the blockset and tileset data for the map
-3. Decodes the 2bpp tile data into pixel values
-4. Renders each tile to create the complete map image

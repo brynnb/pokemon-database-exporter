@@ -65,6 +65,7 @@ def create_database():
     cursor.execute("DROP TABLE IF EXISTS map_connections")
     cursor.execute("DROP TABLE IF EXISTS blocksets")
     cursor.execute("DROP TABLE IF EXISTS tileset_tiles")
+    cursor.execute("DROP TABLE IF EXISTS tiles_raw")
 
     # Create maps table
     cursor.execute(
@@ -132,6 +133,23 @@ def create_database():
         tileset_id INTEGER NOT NULL,
         tile_index INTEGER NOT NULL,
         tile_data BLOB NOT NULL,
+        FOREIGN KEY (tileset_id) REFERENCES tilesets (id)
+    )
+    """
+    )
+
+    # Create tiles_raw table to store raw tile data before processing
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS tiles_raw (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        map_id INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        block_index INTEGER NOT NULL,
+        tileset_id INTEGER NOT NULL,
+        is_overworld INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (map_id) REFERENCES maps (id),
         FOREIGN KEY (tileset_id) REFERENCES tilesets (id)
     )
     """
@@ -319,10 +337,23 @@ def extract_map_data():
         with open(blk_file, "rb") as f:
             blk_data = f.read()
 
+        # Store the original blk_data
         map_data[map_name] = {"blk_data": blk_data}
 
     print(f"Loaded {len(map_data)} map data files")
     return map_data
+
+
+def is_overworld_map(map_name, map_headers):
+    """Determine if a map is an overworld map based on its tileset"""
+    # Overworld maps use tileset 0 (OVERWORLD)
+    for header_name, header_info in map_headers.items():
+        if (
+            header_name.lower() == map_name.lower()
+            or header_name.lower().replace("_", "") == map_name.lower()
+        ):
+            return header_info.get("tileset_id") == 0
+    return False
 
 
 def ensure_2bpp_files_exist():
@@ -722,14 +753,34 @@ def main():
 
     print(f"Inserted {tileset_count} tilesets into database")
 
-    # Create a mapping from map constants to map headers
-    map_constant_to_header = {}
-    for map_name, header_info in map_headers.items():
-        map_id = header_info["map_id"]
-        for const_name, const_info in map_constants.items():
-            if map_id == const_name:
-                map_constant_to_header[const_name] = header_info
+    # First pass: Process all maps to identify overworld maps and their dimensions
+    overworld_maps = {}
+    for map_name, map_info in map_constants.items():
+        # Find the corresponding map header
+        header_info = None
+        for header_name, header_data in map_headers.items():
+            if header_data["map_id"] == map_name:
+                header_info = header_data
                 break
+
+        if not header_info:
+            header_info = {}
+
+        tileset_name = header_info.get("tileset")
+        tileset_id = None
+        if tileset_name:
+            tileset_id = find_tileset_id(tileset_name, tileset_constants)
+
+            # Check if this is an overworld map (tileset_id = 0)
+            is_overworld = tileset_id == 0
+
+            if is_overworld:
+                # Store information about this overworld map
+                overworld_maps[map_name] = {
+                    "width": map_info["width"],
+                    "height": map_info["height"],
+                    "id": map_info["id"],
+                }
 
     # Insert map data
     map_count = 0
@@ -748,29 +799,57 @@ def main():
             header_info = {}
 
         tileset_name = header_info.get("tileset")
+        tileset_id = None
+        if tileset_name:
+            tileset_id = find_tileset_id(tileset_name, tileset_constants)
+            if tileset_id is not None:
+                tileset_match_count += 1
 
-        # Find tileset ID by name
-        tileset_id = find_tileset_id(tileset_name, tileset_constants)
-        if tileset_id is not None:
-            tileset_match_count += 1
+        # Find the corresponding .blk file
+        blk_name = find_matching_blk_file(map_name, map_data)
+        blk_data = None
+        if blk_name:
+            blk_data = map_data[blk_name]["blk_data"]
 
-        # Find matching .blk file
-        matching_blk_name = find_matching_blk_file(map_name, map_data)
-        blk_data = (
-            map_data.get(matching_blk_name, {}).get("blk_data")
-            if matching_blk_name
-            else None
-        )
+        # Check if this is an overworld map (tileset_id = 0)
+        is_overworld = tileset_id == 0
+
+        # For overworld maps, invert the y-coordinates by reversing the rows in the blk_data
+        if is_overworld and blk_data:
+            width = map_info["width"]
+            height = map_info["height"]
+
+            # Convert blk_data to a list of bytes
+            blk_bytes = list(blk_data)
+
+            # Reshape into a 2D grid (rows x columns)
+            grid = []
+            for y in range(height):
+                row = []
+                for x in range(width):
+                    idx = y * width + x
+                    if idx < len(blk_bytes):
+                        row.append(blk_bytes[idx])
+                    else:
+                        row.append(0)  # Pad with zeros if needed
+                grid.append(row)
+
+            # Reverse the rows to invert y-coordinates
+            grid.reverse()
+
+            # Flatten back to 1D
+            inverted_blk_bytes = []
+            for row in grid:
+                inverted_blk_bytes.extend(row)
+
+            # Convert back to bytes
+            blk_data = bytes(inverted_blk_bytes)
 
         # Insert map data even if some fields are missing
-        blk_hex = binascii.hexlify(blk_data).decode("utf-8") if blk_data else None
-
         cursor.execute(
             """
-            INSERT INTO maps (
-                id, name, width, height, tileset_id, blk_data,
-                north_connection, south_connection, west_connection, east_connection
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO maps (id, name, width, height, tileset_id, blk_data)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 map_id,
@@ -778,56 +857,153 @@ def main():
                 map_info["width"],
                 map_info["height"],
                 tileset_id,
-                blk_hex,
-                header_info.get("north_connection", False),
-                header_info.get("south_connection", False),
-                header_info.get("west_connection", False),
-                header_info.get("east_connection", False),
+                blk_data,
             ),
         )
         map_count += 1
 
-        if not matching_blk_name:
+        if not blk_name:
             print(f"Warning: No matching .blk file found for map {map_name}")
         if tileset_id is None and tileset_name:
-            print(
-                f"Warning: No tileset ID found for map {map_name} (tileset: {tileset_name})"
-            )
+            print(f"Warning: No tileset ID found for tileset {tileset_name}")
 
     print(f"Inserted {map_count} maps into database")
     print(f"Maps with matching tileset IDs: {tileset_match_count}")
 
+    # Populate tiles_raw table with raw tile data
+    print("Populating tiles_raw table...")
+    tiles_raw_count = 0
+
+    # Clear existing data
+    cursor.execute("DELETE FROM tiles_raw")
+
+    # Process each map to extract raw tile data
+    for map_name, map_info in map_constants.items():
+        map_id = map_info["id"]
+        width = map_info["width"]
+        height = map_info["height"]
+
+        # Find the corresponding map header to get tileset
+        header_info = None
+        for header_name, header_data in map_headers.items():
+            if header_data["map_id"] == map_name:
+                header_info = header_data
+                break
+
+        if not header_info:
+            continue
+
+        tileset_name = header_info.get("tileset")
+        if not tileset_name:
+            continue
+
+        tileset_id = find_tileset_id(tileset_name, tileset_constants)
+        if tileset_id is None:
+            continue
+
+        # Check if this is an overworld map
+        is_overworld = tileset_id == 0
+
+        # Find the corresponding .blk file
+        blk_name = find_matching_blk_file(map_name, map_data)
+        if not blk_name or not map_data[blk_name]["blk_data"]:
+            continue
+
+        blk_data = map_data[blk_name]["blk_data"]
+
+        # Convert blk_data to a list of integers
+        try:
+            # If blk_data is already a bytes object
+            if isinstance(blk_data, bytes):
+                blk_bytes = list(blk_data)
+            # If blk_data is a string representation of hex
+            elif isinstance(blk_data, str) and all(
+                c in "0123456789ABCDEFabcdef" for c in blk_data
+            ):
+                blk_bytes = [
+                    int(blk_data[i : i + 2], 16) for i in range(0, len(blk_data), 2)
+                ]
+            else:
+                # Try to convert from binary string
+                blk_bytes = list(map(ord, blk_data))
+        except Exception as e:
+            print(f"Error processing blk_data for map {map_name}: {e}")
+            continue
+
+        # Verify we have the expected number of blocks
+        expected_blocks = width * height
+        if len(blk_bytes) < expected_blocks:
+            # Pad with zeros if needed
+            blk_bytes.extend([0] * (expected_blocks - len(blk_bytes)))
+        elif len(blk_bytes) > expected_blocks:
+            # Truncate if needed
+            blk_bytes = blk_bytes[:expected_blocks]
+
+        # Process each block in the map
+        for y in range(height):
+            for x in range(width):
+                # Get the block index from the map data
+                block_pos = y * width + x
+                if block_pos < len(blk_bytes):
+                    block_index = blk_bytes[block_pos]
+
+                    # Insert into tiles_raw table
+                    cursor.execute(
+                        """
+                        INSERT INTO tiles_raw (map_id, x, y, block_index, tileset_id, is_overworld)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            map_id,
+                            x,
+                            y,
+                            block_index,
+                            tileset_id,
+                            1 if is_overworld else 0,
+                        ),
+                    )
+                    tiles_raw_count += 1
+
+                    # Commit every 1000 inserts to avoid transaction getting too large
+                    if tiles_raw_count % 1000 == 0:
+                        db_conn.commit()
+                        print(f"Inserted {tiles_raw_count} raw tiles so far...")
+
+    db_conn.commit()
+    print(f"Inserted {tiles_raw_count} raw tiles into tiles_raw table")
+
     # Insert map connections
     connection_count = 0
-    for conn in map_connections:
-        from_map_id = None
-        to_map_id = None
-
-        # Find the map IDs from the map constants
-        for const_name, const_info in map_constants.items():
-            if const_name == conn["from_map_id"]:
-                from_map_id = const_info["id"]
-            if const_name == conn["to_map_id"]:
-                to_map_id = const_info["id"]
-
-        if from_map_id is not None and to_map_id is not None:
-            cursor.execute(
-                """
-                INSERT INTO map_connections (
-                    from_map_id, to_map_id, direction, offset
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (from_map_id, to_map_id, conn["direction"], conn["offset"]),
-            )
-            connection_count += 1
-        else:
-            print(
-                f"Warning: Could not find map IDs for connection {conn['from_map_name']} -> {conn['to_map_name']}"
-            )
+    for connection in map_connections:
+        cursor.execute(
+            """
+            INSERT INTO map_connections (from_map_id, to_map_id, direction, offset)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                connection["from_map_id"],
+                connection["to_map_id"],
+                connection["direction"],
+                connection["offset"],
+            ),
+        )
+        connection_count += 1
 
     print(f"Inserted {connection_count} map connections into database")
 
-    # Commit changes and close connection
+    # Add a special table to store overworld map positioning information
+    cursor.execute("DROP TABLE IF EXISTS overworld_map_positions")
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS overworld_map_positions (
+            map_id INTEGER PRIMARY KEY,
+            map_name TEXT NOT NULL,
+            x_offset INTEGER NOT NULL,
+            y_offset INTEGER NOT NULL
+        )
+        """
+    )
+
     db_conn.commit()
     db_conn.close()
 

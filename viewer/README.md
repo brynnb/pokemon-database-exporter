@@ -30,40 +30,7 @@ If no zone_id is provided, it will default to zone 15.
 
 - **Arrow keys**: Pan the view
 - **Mouse drag**: Pan the view
+- **+/-**: Zoom in/out
+- **S**: Save screenshot
+- **O**: Save outline screenshot
 - **ESC**: Quit the viewer
-
-## 2. Simple Image Viewer
-
-The simple image viewer generates a static PNG image of the zone and opens it with your default image viewer.
-
-### Usage
-
-```bash
-python simple_tile_viewer.py [zone_id]
-```
-
-If no zone_id is provided, it will default to zone 15.
-
-The generated images are saved in the `zone_images` directory.
-
-## 3. Web Viewer
-
-The web viewer provides a browser-based interface to view and download zone images.
-
-### Usage
-
-```bash
-python web_tile_viewer.py
-```
-
-Then open your web browser and navigate to:
-
-```
-http://127.0.0.1:5000
-```
-
-### Features
-
-- Select different zones from a dropdown menu
-- View zone images in the browser
-- Download zone images as PNG files
