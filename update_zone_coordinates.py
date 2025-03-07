@@ -18,7 +18,10 @@ Coordinate System:
 
 This ensures there's no overlap between adjacent zones.
 
-For now, it processes zone IDs 1 (Pallet Town), 13 (Route 1), and 2 (Viridian City).
+The script processes up to 10 zones, starting with Pallet Town and branching out
+to adjacent zones based on the map_connections table. The zones are processed in
+breadth-first order, ensuring that each zone's coordinates are updated relative to
+its connected zones that have already been processed.
 
 Usage:
     python update_zone_coordinates.py
@@ -29,8 +32,7 @@ import time
 
 # Constants
 PALLET_TOWN_ZONE_ID = 1
-ROUTE_1_ZONE_ID = 13
-VIRIDIAN_CITY_ZONE_ID = 2
+MAX_ZONES_TO_PROCESS = 10  # Maximum number of zones to process
 BLOCK_SIZE = 2  # Each block is 2x2 tiles
 
 # Map name mappings between zones table and map_connections table
@@ -39,9 +41,6 @@ MAP_NAME_MAPPINGS = {
     "Route1": "ROUTE_1",
     "ViridianCity": "VIRIDIAN_CITY",
 }
-
-# Zones to process
-ZONES_TO_PROCESS = [PALLET_TOWN_ZONE_ID, ROUTE_1_ZONE_ID, VIRIDIAN_CITY_ZONE_ID]
 
 
 def get_zone_dimensions(cursor, zone_id):
@@ -89,7 +88,7 @@ def get_zone_id_by_map_name(cursor, map_name):
     result = cursor.fetchone()
     if result:
         return result[0]
-
+    
     # Try to find a matching zone using the reverse mapping
     for zone_name, map_id in MAP_NAME_MAPPINGS.items():
         if map_id == map_name:
@@ -97,7 +96,7 @@ def get_zone_id_by_map_name(cursor, map_name):
             result = cursor.fetchone()
             if result:
                 return result[0]
-
+    
     return None
 
 
@@ -194,19 +193,50 @@ def calculate_zone_offset(
     return x_offset, y_offset
 
 
+def get_all_map_connections(cursor):
+    """Get all map connections from the database"""
+    cursor.execute(
+        "SELECT from_map_id, to_map_id, direction, offset FROM map_connections"
+    )
+    return cursor.fetchall()
+
+
+def get_all_zone_names(cursor):
+    """Get all zone names from the database"""
+    cursor.execute("SELECT id, name FROM zones WHERE is_overworld = 1")
+    return {row[0]: row[1] for row in cursor.fetchall()}
+
+
+def update_map_name_mappings(zone_names):
+    """Update the MAP_NAME_MAPPINGS dictionary with all zone names"""
+    for zone_id, zone_name in zone_names.items():
+        # Convert camelCase to UPPER_CASE with underscore
+        if zone_name.startswith("Route"):
+            # Special case for routes: Route1 -> ROUTE_1
+            route_num = zone_name[5:]  # Extract the number part
+            map_name = f"ROUTE_{route_num}"
+        else:
+            # For other names: CamelCase -> CAMEL_CASE
+            map_name = ''.join(['_' + c if c.isupper() else c for c in zone_name]).upper().lstrip('_')
+        
+        MAP_NAME_MAPPINGS[zone_name] = map_name
+
+
 def process_zone_connections(conn):
-    """Process zone connections for the specified zones"""
+    """Process zone connections for up to MAX_ZONES_TO_PROCESS zones"""
     cursor = conn.cursor()
+
+    # Get all zone names and update mappings
+    zone_names = get_all_zone_names(cursor)
+    update_map_name_mappings(zone_names)
+
     processed_zones = set()
     zone_queue = [(PALLET_TOWN_ZONE_ID, 0, 0)]  # (zone_id, x_offset, y_offset)
 
-    while zone_queue:
+    while zone_queue and len(processed_zones) < MAX_ZONES_TO_PROCESS:
         current_zone_id, current_x_offset, current_y_offset = zone_queue.pop(0)
 
-        if (
-            current_zone_id in processed_zones
-            or current_zone_id not in ZONES_TO_PROCESS
-        ):
+        if current_zone_id in processed_zones:
             continue
 
         # First, reset the zone to its original position (0,0)
@@ -261,11 +291,7 @@ def process_zone_connections(conn):
                 # Get the zone ID for the connected map
                 connected_zone_id = get_zone_id_by_map_name(cursor, connected_map_name)
 
-                if (
-                    not connected_zone_id
-                    or connected_zone_id in processed_zones
-                    or connected_zone_id not in ZONES_TO_PROCESS
-                ):
+                if not connected_zone_id or connected_zone_id in processed_zones:
                     continue
 
                 # Calculate new offsets
@@ -289,6 +315,11 @@ def process_zone_connections(conn):
                 new_y_offset = current_y_offset + y_offset
                 zone_queue.append((connected_zone_id, new_x_offset, new_y_offset))
 
+    print(
+        f"\nProcessed {len(processed_zones)} zones out of maximum {MAX_ZONES_TO_PROCESS}"
+    )
+    return processed_zones
+
 
 def main():
     """Main function"""
@@ -300,10 +331,11 @@ def main():
 
     try:
         # Process zone connections
-        process_zone_connections(conn)
+        processed_zones = process_zone_connections(conn)
 
         # Verify the results
-        for zone_id in ZONES_TO_PROCESS:
+        print("\nFinal coordinates:")
+        for zone_id in processed_zones:
             cursor.execute(
                 "SELECT MIN(x), MAX(x), MIN(y), MAX(y) FROM tiles WHERE zone_id = ?",
                 (zone_id,),
@@ -311,7 +343,7 @@ def main():
             coords = cursor.fetchone()
             zone_name = get_zone_name(cursor, zone_id)
             print(
-                f"{zone_name} coordinates: x={coords[0]} to {coords[1]}, y={coords[2]} to {coords[3]}"
+                f"{zone_name} (zone_id {zone_id}): x={coords[0]} to {coords[1]}, y={coords[2]} to {coords[3]}"
             )
 
         elapsed_time = time.time() - start_time
