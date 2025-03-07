@@ -110,3 +110,5 @@ The tool follows the process described in MAPLOGIC.md:
 7. Parse blockset files to extract block data
 8. Parse 2bpp files to extract tile data
 9. Store all data in a SQLite database
+
+View all overworld maps: `npm run viewer:pygame -- 1,2,3,4,5,6,7,8,9,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36,37`

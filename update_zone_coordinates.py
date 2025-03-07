@@ -18,7 +18,7 @@ Coordinate System:
 
 This ensures there's no overlap between adjacent zones.
 
-The script processes up to 10 zones, starting with Pallet Town and branching out
+The script processes up to a given number of zones, starting with Pallet Town and branching out
 to adjacent zones based on the map_connections table. The zones are processed in
 breadth-first order, ensuring that each zone's coordinates are updated relative to
 its connected zones that have already been processed.
@@ -32,7 +32,7 @@ import time
 
 # Constants
 PALLET_TOWN_ZONE_ID = 1
-MAX_ZONES_TO_PROCESS = 10  # Maximum number of zones to process
+MAX_ZONES_TO_PROCESS = 37  # Maximum number of zones to process
 BLOCK_SIZE = 2  # Each block is 2x2 tiles
 
 # Map name mappings between zones table and map_connections table
@@ -88,7 +88,7 @@ def get_zone_id_by_map_name(cursor, map_name):
     result = cursor.fetchone()
     if result:
         return result[0]
-    
+
     # Try to find a matching zone using the reverse mapping
     for zone_name, map_id in MAP_NAME_MAPPINGS.items():
         if map_id == map_name:
@@ -96,7 +96,7 @@ def get_zone_id_by_map_name(cursor, map_name):
             result = cursor.fetchone()
             if result:
                 return result[0]
-    
+
     return None
 
 
@@ -217,8 +217,12 @@ def update_map_name_mappings(zone_names):
             map_name = f"ROUTE_{route_num}"
         else:
             # For other names: CamelCase -> CAMEL_CASE
-            map_name = ''.join(['_' + c if c.isupper() else c for c in zone_name]).upper().lstrip('_')
-        
+            map_name = (
+                "".join(["_" + c if c.isupper() else c for c in zone_name])
+                .upper()
+                .lstrip("_")
+            )
+
         MAP_NAME_MAPPINGS[zone_name] = map_name
 
 
