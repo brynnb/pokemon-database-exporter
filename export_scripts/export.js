@@ -25,7 +25,7 @@ async function runExports() {
   log("Starting Pokemon data exports...");
 
   // Run item exports
-  const itemsSuccess = runCommand("python3 export_items.py");
+  const itemsSuccess = runCommand("python3 export_scripts/export_items.py");
   if (!itemsSuccess) {
     log("Item export failed");
     return;
@@ -33,7 +33,7 @@ async function runExports() {
   log("Item export successful");
 
   // Run move exports
-  const movesSuccess = runCommand("python3 export_moves.py");
+  const movesSuccess = runCommand("python3 export_scripts/export_moves.py");
   if (!movesSuccess) {
     log("Move export failed");
     return;
@@ -41,7 +41,7 @@ async function runExports() {
   log("Move export successful");
 
   // Run pokemon exports
-  const pokemonSuccess = runCommand("python3 export_pokemon.py");
+  const pokemonSuccess = runCommand("python3 export_scripts/export_pokemon.py");
   if (!pokemonSuccess) {
     log("Pokemon export failed");
     return;
@@ -49,7 +49,7 @@ async function runExports() {
   log("Pokemon export successful");
 
   // Run map exports
-  const mapsSuccess = runCommand("python3 export_map.py");
+  const mapsSuccess = runCommand("python3 export_scripts/export_map.py");
   if (!mapsSuccess) {
     log("Map export failed");
     return;
@@ -57,7 +57,9 @@ async function runExports() {
   log("Map export successful");
 
   // Run create zones and tiles
-  const zonesAndTilesSuccess = runCommand("python3 create_zones_and_tiles.py");
+  const zonesAndTilesSuccess = runCommand(
+    "python3 export_scripts/create_zones_and_tiles.py"
+  );
   if (!zonesAndTilesSuccess) {
     log("Create zones and tiles failed");
     return;
@@ -65,7 +67,9 @@ async function runExports() {
   log("Create zones and tiles successful");
 
   // Run update overworld tiles
-  const overworldTilesSuccess = runCommand("python3 update_overworld_tiles.py");
+  const overworldTilesSuccess = runCommand(
+    "python3 export_scripts/update_overworld_tiles.py"
+  );
   if (!overworldTilesSuccess) {
     log("Update overworld tiles failed");
     return;
@@ -74,7 +78,7 @@ async function runExports() {
 
   // Run update zone coordinates
   const zoneCoordinatesSuccess = runCommand(
-    "python3 update_zone_coordinates.py"
+    "python3 export_scripts/update_zone_coordinates.py"
   );
   if (!zoneCoordinatesSuccess) {
     log("Update zone coordinates failed");
@@ -83,7 +87,7 @@ async function runExports() {
   log("Update zone coordinates successful");
 
   // Run objects exports
-  const objectsSuccess = runCommand("python3 export_objects.py");
+  const objectsSuccess = runCommand("python3 export_scripts/export_objects.py");
   if (!objectsSuccess) {
     log("Objects export failed");
     return;
@@ -91,7 +95,7 @@ async function runExports() {
   log("Objects export successful");
 
   // Run move files script
-  const moveFilesSuccess = runCommand("python3 move_files.py");
+  const moveFilesSuccess = runCommand("python3 export_scripts/move_files.py");
   if (!moveFilesSuccess) {
     log("Move files failed");
     return;

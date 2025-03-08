@@ -2,10 +2,10 @@
     "name": "pokemon-data-exporter",
     "version": "0.0.1",
     "description": "Data exporter for Pokemon game data",
-    "main": "export.js",
+    "main": "export_scripts/export.js",
     "scripts": {
-        "export": "node export.js",
-        "export:items": "python3 export_items.py",
+        "export": "node export_scripts/export.js",
+        "export:items": "python3 export_scripts/export_items.py",
         "postinstall": "rm -rf pokemon-game-data && git clone https://github.com/pret/pokered.git pokemon-game-data && touch pokemon-game-data/.gitkeep",
         "viewer": "cd viewer && ./run_viewers.sh",
         "viewer:pygame": "cd viewer && ./run_viewers.sh"

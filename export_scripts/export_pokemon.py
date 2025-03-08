@@ -3,6 +3,10 @@ import re
 import sqlite3
 import glob
 from pathlib import Path
+import sys
+
+# Add the root directory to the Python path to allow imports from utils
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.pokemon_utils import SPECIAL_NAME_MAPPINGS, normalize_pokemon_name
 
 # Constants
