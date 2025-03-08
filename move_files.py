@@ -50,9 +50,9 @@ def extract_tileset_signs():
     return extracted_count > 0
 
 
-def make_poke_ball_transparent(source_path, dest_path):
+def make_white_pixels_transparent(source_path, dest_path, filename="image"):
     """
-    Make white pixels in poke_ball.png transparent
+    Make white pixels in sprite images transparent
     """
     try:
         # Open the image
@@ -82,16 +82,17 @@ def make_poke_ball_transparent(source_path, dest_path):
 
         # Save the modified image
         img.save(dest_path)
-        print(f"Made white pixels transparent in poke_ball.png")
+        print(f"Made white pixels transparent in {filename}")
         return True
     except Exception as e:
-        print(f"Error making poke_ball.png transparent: {e}")
+        print(f"Error making {filename} transparent: {e}")
         return False
 
 
 def copy_sprite_files():
     """
     Copy PNG files from pokemon-game-data/gfx/sprites to the sprites folder
+    and make white pixels transparent
     """
     # Define source and destination directories
     source_dir = os.path.join("pokemon-game-data", "gfx", "sprites")
@@ -107,25 +108,20 @@ def copy_sprite_files():
         print(f"No PNG files found in {source_dir}")
         return False
 
-    # Copy each PNG file to the destination directory
+    # Copy each PNG file to the destination directory and make white pixels transparent
     copied_count = 0
     for png_file in png_files:
         filename = os.path.basename(png_file)
         dest_path = os.path.join(dest_dir, filename)
 
         try:
-            # Special handling for poke_ball.png
-            if filename == "poke_ball.png":
-                make_poke_ball_transparent(png_file, dest_path)
-            else:
-                shutil.copy2(png_file, dest_path)
-
+            make_white_pixels_transparent(png_file, dest_path, filename)
             copied_count += 1
             print(f"Copied: {filename}")
         except Exception as e:
             print(f"Error copying {filename}: {e}")
 
-    print(f"\nSuccessfully copied {copied_count} PNG files to {dest_dir}")
+    print(f"\nSuccessfully copied and processed {copied_count} PNG files to {dest_dir}")
     return True
 
 

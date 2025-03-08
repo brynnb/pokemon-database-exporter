@@ -36,72 +36,78 @@ ZONE_IDS = []
 
 
 def load_tile_images():
-    """Load all tile images from the database into a dictionary"""
+    """Load all tile images from the database"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Get all tile images
-    cursor.execute(
-        """
-        SELECT id, image_path FROM tile_images
-    """
-    )
-
+    cursor.execute("SELECT id, image_path FROM tile_images")
     tile_images = {}
-    print("Loading tile images...")
 
-    # Create a default colored tile for missing images
-    default_colors = {}
+    for row in cursor.fetchall():
+        tile_id, image_path = row
+        if image_path:
+            try:
+                # Adjust the image path to be relative to the script location
+                adjusted_path = os.path.join("..", image_path)
 
-    for image_id, image_path in cursor.fetchall():
-        try:
-            # Load the image using PIL
-            # Adjust the image path to be relative to the script location
-            adjusted_path = os.path.join("..", image_path)
+                if os.path.exists(adjusted_path):
+                    # Load the image
+                    image = pygame.image.load(adjusted_path)
+                    tile_images[tile_id] = image
+                else:
+                    print(f"Image file not found: {adjusted_path}")
+            except Exception as e:
+                print(f"Error loading tile image {tile_id}: {e}")
 
-            # If the image doesn't exist, create a colored tile based on the ID
-            if not os.path.exists(adjusted_path):
-                # Create a colored tile based on the image_id
-                if image_id not in default_colors:
-                    # Generate a pseudo-random color based on the image_id
-                    r = (image_id * 73) % 256
-                    g = (image_id * 127) % 256
-                    b = (image_id * 191) % 256
-                    default_colors[image_id] = (r, g, b)
-
-                # Create a new image with the color
-                img = Image.new("RGB", (TILE_SIZE, TILE_SIZE), default_colors[image_id])
-
-                # Draw a border and the ID number for identification
-                from PIL import ImageDraw
-
-                draw = ImageDraw.Draw(img)
-                draw.rectangle(
-                    [(0, 0), (TILE_SIZE - 1, TILE_SIZE - 1)], outline=(255, 255, 255)
-                )
-
-                # Convert PIL image to Pygame surface
-                mode = img.mode
-                size = img.size
-                data = img.tobytes()
-                py_image = pygame.image.fromstring(data, size, mode)
-            else:
-                # Load the actual image if it exists
-                img = Image.open(adjusted_path)
-                # Convert PIL image to Pygame surface at original size
-                mode = img.mode
-                size = img.size
-                data = img.tobytes()
-                py_image = pygame.image.fromstring(data, size, mode)
-
-            # Store the original image (we'll scale it during rendering based on zoom level)
-            tile_images[image_id] = py_image
-        except Exception as e:
-            print(f"Error loading image {image_path}: {e}")
-
-    print(f"Loaded {len(tile_images)} tile images")
     conn.close()
     return tile_images
+
+
+def load_npc_sprites():
+    """Load NPC sprite sheets"""
+    npc_sprites = {}
+
+    # Define the sprites directory
+    sprites_dir = os.path.join("..", "sprites")
+    if not os.path.exists(sprites_dir):
+        # Try alternative path
+        sprites_dir = os.path.join("..", "pokemon-game-data", "gfx", "sprites")
+        if not os.path.exists(sprites_dir):
+            print("Warning: Could not find sprites directory")
+            return npc_sprites
+
+    # List of common sprite names to load
+    sprite_names = [
+        "SPRITE_BEAUTY",
+        "SPRITE_GIOVANNI",
+        "SPRITE_ROCKET",
+        "SPRITE_CLERK",
+        "SPRITE_GAMEBOY_KID",
+        "SPRITE_LITTLE_BOY",
+        "SPRITE_BRUNO",
+        "SPRITE_BIKE_SHOP_CLERK",
+        "SPRITE_YOUNGSTER",
+        "SPRITE_SUPER_NERD",
+        "SPRITE_SCIENTIST",
+    ]
+
+    # Map sprite names to filenames (lowercase without SPRITE_ prefix)
+    for sprite_name in sprite_names:
+        filename = sprite_name.replace("SPRITE_", "").lower() + ".png"
+        sprite_path = os.path.join(sprites_dir, filename)
+
+        if os.path.exists(sprite_path):
+            try:
+                sprite = pygame.image.load(sprite_path)
+                npc_sprites[sprite_name] = sprite
+                print(f"Loaded {sprite_name} sprite")
+            except Exception as e:
+                print(f"Error loading {sprite_name}: {e}")
+        else:
+            print(f"Sprite file not found: {sprite_path}")
+
+    return npc_sprites
 
 
 def get_zone_info(zone_id):
@@ -553,6 +559,27 @@ def load_items():
     return items
 
 
+def load_npcs():
+    """Load all NPCs from the objects table where object_type is 'npc' and action_type is 'STAY'"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Get all stationary NPCs from overworld zones
+    cursor.execute(
+        """
+        SELECT o.id, o.zone_id, o.x, o.y, o.sprite_name, o.action_type, o.action_direction 
+        FROM objects o
+        JOIN zones z ON o.zone_id = z.id
+        WHERE o.object_type = 'npc' AND o.action_type = 'STAY' AND z.is_overworld = 1
+    """
+    )
+
+    npcs = cursor.fetchall()
+    conn.close()
+    print(f"Loaded {len(npcs)} stationary NPCs from overworld zones")
+    return npcs
+
+
 def render_map(
     tile_images,
     tiles,
@@ -561,6 +588,8 @@ def render_map(
     zone_colors=None,
     items=None,
     poke_ball_image=None,
+    npcs=None,
+    npc_sprites=None,
 ):
     """Render the map to a surface"""
     # Calculate the size of the map in pixels
@@ -642,6 +671,67 @@ def render_map(
 
                 # Draw the item
                 map_surface.blit(scaled_image, (pos_x, pos_y))
+
+    # Render NPCs if provided
+    if npcs and npc_sprites:
+        for npc in npcs:
+            npc_id, zone_id, x, y, sprite_name, action_type, action_direction = npc
+            if x is not None and y is not None and sprite_name in npc_sprites:
+                # Skip NPCs that are not in the current view
+                if not OVERWORLD_MODE and not MULTI_ZONE_MODE and zone_id != zone_id:
+                    continue
+                if MULTI_ZONE_MODE and zone_id not in ZONE_IDS:
+                    continue
+
+                # Check if the NPC is within the visible map area
+                if (
+                    x < zone_info["min_x"]
+                    or x > zone_info["max_x"]
+                    or y < zone_info["min_y"]
+                    or y > zone_info["max_y"]
+                ):
+                    continue
+
+                # Calculate the position on the map
+                pos_x = int((x - zone_info["min_x"]) * TILE_SIZE * zoom_level)
+                pos_y = int((y - zone_info["min_y"]) * TILE_SIZE * zoom_level)
+
+                # Get the sprite sheet
+                sprite_sheet = npc_sprites[sprite_name]
+
+                # Determine which sprite to use based on direction
+                sprite_index = 0  # Default: facing down
+                if action_direction == "UP":
+                    sprite_index = 1
+                elif action_direction == "LEFT":
+                    sprite_index = 2
+                elif action_direction == "RIGHT":
+                    sprite_index = 2  # We'll flip this horizontally
+                elif action_direction == "DOWN":
+                    sprite_index = 0
+                elif action_direction == "NONE" or action_direction == "ANY_DIR":
+                    sprite_index = 0  # Default to facing down
+                # Skip other special directions for now
+
+                # Extract the correct sprite from the sheet
+                sprite_width = 16
+                sprite_height = 16
+                sprite_rect = pygame.Rect(
+                    0, sprite_index * sprite_height, sprite_width, sprite_height
+                )
+                sprite = pygame.Surface((sprite_width, sprite_height), pygame.SRCALPHA)
+                sprite.blit(sprite_sheet, (0, 0), sprite_rect)
+
+                # Flip the sprite horizontally if facing right
+                if action_direction == "RIGHT":
+                    sprite = pygame.transform.flip(sprite, True, False)
+
+                # Scale the sprite based on the zoom level
+                scaled_size = (int(TILE_SIZE * zoom_level), int(TILE_SIZE * zoom_level))
+                scaled_sprite = pygame.transform.scale(sprite, scaled_size)
+
+                # Draw the NPC
+                map_surface.blit(scaled_sprite, (pos_x, pos_y))
 
     return map_surface, map_width, map_height
 
@@ -750,6 +840,16 @@ def main():
     items = load_items()
     print(f"Loaded {len(items)} items")
 
+    # Load NPCs
+    print("Loading NPCs...")
+    npcs = load_npcs()
+    print(f"Loaded {len(npcs)} NPCs")
+
+    # Load NPC sprites
+    print("Loading NPC sprites...")
+    npc_sprites = load_npc_sprites()
+    print(f"Loaded {len(npc_sprites)} NPC sprite sheets")
+
     # Load Poké Ball image for items
     poke_ball_image = None
     try:
@@ -806,10 +906,20 @@ def main():
             zone_colors,
             items,
             poke_ball_image,
+            npcs,
+            npc_sprites,
         )
     else:
         map_surface, map_width, map_height = render_map(
-            tile_images, tiles, zone_info, zoom_level, None, items, poke_ball_image
+            tile_images,
+            tiles,
+            zone_info,
+            zoom_level,
+            None,
+            items,
+            poke_ball_image,
+            npcs,
+            npc_sprites,
         )
 
     # Center the map initially
@@ -842,6 +952,13 @@ def main():
         item_id, zone_id, x, y, db_item_id, item_name = item
         if x is not None and y is not None:
             tile_to_item_map[(x, y)] = (db_item_id, item_name)
+
+    # Create a mapping of tile positions to NPCs for quick lookup
+    tile_to_npc_map = {}
+    for npc in npcs:
+        npc_id, zone_id, x, y, sprite_name, action_type, action_direction = npc
+        if x is not None and y is not None:
+            tile_to_npc_map[(x, y)] = (npc_id, sprite_name, action_direction)
 
     while running:
         for event in pygame.event.get():
@@ -885,6 +1002,8 @@ def main():
                             zone_colors,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
@@ -895,6 +1014,8 @@ def main():
                             None,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -926,6 +1047,8 @@ def main():
                             zone_colors,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
@@ -936,6 +1059,8 @@ def main():
                             None,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -1031,6 +1156,8 @@ def main():
                             zone_colors,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
@@ -1041,6 +1168,8 @@ def main():
                             None,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -1071,6 +1200,8 @@ def main():
                             zone_colors,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
@@ -1081,6 +1212,8 @@ def main():
                             None,
                             items,
                             poke_ball_image,
+                            npcs,
+                            npc_sprites,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -1173,6 +1306,37 @@ def main():
             # Add a background for better visibility
             pygame.draw.rect(screen, (0, 0, 0), text_rect.inflate(10, 10))
             screen.blit(text_surface, text_rect)
+
+        # Display tile coordinates and zone name if hovering over a tile
+        if hover_coords:
+            tile_x, tile_y = hover_coords
+            zone_name = get_zone_name_for_tile(
+                tile_x, tile_y, tile_to_zone_map, zone_names_cache
+            )
+
+            # Check if there's an item at this position
+            item_info = ""
+            if (tile_x, tile_y) in tile_to_item_map:
+                item_id, item_name = tile_to_item_map[(tile_x, tile_y)]
+                item_info = f" | Item: {item_name} (ID: {item_id})"
+
+            # Check if there's an NPC at this position
+            npc_info = ""
+            if (tile_x, tile_y) in tile_to_npc_map:
+                npc_id, sprite_name, action_direction = tile_to_npc_map[
+                    (tile_x, tile_y)
+                ]
+                npc_info = (
+                    f" | NPC: {sprite_name} (ID: {npc_id}, Facing: {action_direction})"
+                )
+
+            # Render the text
+            coords_text = font.render(
+                f"Tile: ({tile_x}, {tile_y}) | Zone: {zone_name}{item_info}{npc_info}",
+                True,
+                (255, 255, 255),
+            )
+            screen.blit(coords_text, (10, 10))
 
         # Update the display
         pygame.display.flip()
