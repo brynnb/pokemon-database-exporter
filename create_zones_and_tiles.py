@@ -328,7 +328,9 @@ def extract_tile_images(conn):
                     )
                     # Special case: If this is the GYM tileset (ID 7), also store the mapping for DOJO (ID 5)
                     if tileset_id == 7:
-                        block_pos_to_image_id[(5, block_index, pos_index)] = existing_image_id
+                        block_pos_to_image_id[(5, block_index, pos_index)] = (
+                            existing_image_id
+                        )
                     duplicate_count += 1
                 else:
                     # Save the image with a sequential number
