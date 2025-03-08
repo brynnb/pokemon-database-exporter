@@ -33,6 +33,8 @@ def create_database():
         object_type TEXT NOT NULL,
         x INTEGER,
         y INTEGER,
+        local_x INTEGER,
+        local_y INTEGER,
         spriteset_id INTEGER,
         sprite_name TEXT,
         text TEXT,
@@ -161,8 +163,10 @@ def parse_bg_events(content, map_name):
             {
                 "name": f"{map_name}_SIGN_{i+1}",
                 "object_type": OBJECT_TYPE_BG,
-                "x": x,
-                "y": y,
+                "x": None,  # Global x will be populated later
+                "y": None,  # Global y will be populated later
+                "local_x": x,
+                "local_y": y,
                 "text": text_id,
                 "sprite_name": "SPRITE_SIGN",  # Default sprite for signs
             }
@@ -264,8 +268,10 @@ def parse_object_events(content, map_name, cursor):
             {
                 "name": f"{map_name}_{'ITEM' if object_type == OBJECT_TYPE_ITEM else 'NPC'}_{i+1}",
                 "object_type": object_type,
-                "x": x,
-                "y": y,
+                "x": None,  # Global x will be populated later
+                "y": None,  # Global y will be populated later
+                "local_x": x,
+                "local_y": y,
                 "spriteset_id": None,  # Not implemented yet
                 "sprite_name": sprite,
                 "text": text_id,
@@ -324,9 +330,9 @@ def main():
         cursor.execute(
             """
         INSERT INTO objects (
-            name, zone_id, object_type, x, y,
+            name, zone_id, object_type, x, y, local_x, local_y,
             spriteset_id, sprite_name, text, action_type, action_direction, item_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 obj.get("name"),
@@ -334,6 +340,8 @@ def main():
                 obj.get("object_type"),
                 obj.get("x"),
                 obj.get("y"),
+                obj.get("local_x"),
+                obj.get("local_y"),
                 obj.get("spriteset_id"),
                 obj.get("sprite_name"),
                 obj.get("text"),
@@ -348,6 +356,9 @@ def main():
     conn.close()
 
     print(f"Successfully exported {len(all_objects)} objects to pokemon.db")
+    print(
+        "Note: Run update_object_coordinates.py to update global coordinates (x, y) based on local coordinates (local_x, local_y)"
+    )
 
 
 if __name__ == "__main__":
