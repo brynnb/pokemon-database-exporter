@@ -576,6 +576,50 @@ def render_map(tile_images, tiles, zone_info, zoom_level, zone_colors=None):
     return map_surface, map_width, map_height
 
 
+def screen_to_tile_coords(
+    screen_x, screen_y, offset_x, offset_y, zone_info, zoom_level
+):
+    """Convert screen coordinates to tile coordinates"""
+    # Adjust for offset
+    map_x = screen_x - offset_x
+    map_y = screen_y - offset_y
+
+    # Convert to tile coordinates
+    tile_x = int(map_x / (TILE_SIZE * zoom_level)) + zone_info["min_x"]
+    tile_y = int(map_y / (TILE_SIZE * zoom_level)) + zone_info["min_y"]
+
+    return tile_x, tile_y
+
+
+def get_zone_name_for_tile(tile_x, tile_y, tile_to_zone_map, zone_names_cache=None):
+    """Get the zone name for a specific tile position"""
+    # Check if this tile position exists in our map
+    tile_key = (tile_x, tile_y)
+    if tile_key in tile_to_zone_map:
+        zone_id = tile_to_zone_map[tile_key]
+
+        # Check if we have the zone name in the cache
+        if zone_names_cache is not None and zone_id in zone_names_cache:
+            return zone_names_cache[zone_id]
+
+        # Get the zone name from the database
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM zones WHERE id = ?", (zone_id,))
+        result = cursor.fetchone()
+        conn.close()
+
+        zone_name = result[0] if result else f"Unknown Zone {zone_id}"
+
+        # Add to cache if it exists
+        if zone_names_cache is not None:
+            zone_names_cache[zone_id] = zone_name
+
+        return zone_name
+
+    return "No Zone"
+
+
 def main():
     global OVERWORLD_MODE, MULTI_ZONE_MODE, ZONE_IDS
 
@@ -587,6 +631,9 @@ def main():
     screen_width = min(1024, screen_info.current_w)
     screen_height = min(768, screen_info.current_h)
     screen = pygame.display.set_mode((screen_width, screen_height))
+
+    # Initialize font for displaying coordinates
+    font = pygame.font.SysFont(None, 24)
 
     # Parse command line arguments
     zone_id = ZONE_ID
@@ -669,6 +716,18 @@ def main():
     # Main game loop
     running = True
     clock = pygame.time.Clock()
+
+    # Variables for displaying tile coordinates
+    hover_coords = None
+
+    # Cache for zone names to avoid repeated database queries
+    zone_names_cache = {}
+
+    # Create a mapping of tile positions to zone IDs for quick lookup
+    tile_to_zone_map = {}
+    if OVERWORLD_MODE or MULTI_ZONE_MODE:
+        for x, y, _, zone_id in tiles:
+            tile_to_zone_map[(x, y)] = zone_id
 
     while running:
         for event in pygame.event.get():
@@ -881,6 +940,32 @@ def main():
 
         # Draw the map
         screen.blit(map_surface, (offset_x, offset_y))
+
+        # Get mouse position and convert to tile coordinates
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        tile_x, tile_y = screen_to_tile_coords(
+            mouse_x, mouse_y, offset_x, offset_y, zone_info, zoom_level
+        )
+
+        # Check if the mouse is over the map
+        map_rect = map_surface.get_rect(topleft=(offset_x, offset_y))
+        if map_rect.collidepoint(mouse_x, mouse_y):
+            # Get zone name for the current tile
+            zone_name = None
+            if OVERWORLD_MODE or MULTI_ZONE_MODE:
+                zone_name = get_zone_name_for_tile(
+                    tile_x, tile_y, tile_to_zone_map, zone_names_cache
+                )
+            else:
+                zone_name = zone_info["name"]
+
+            # Display tile coordinates and zone name
+            coord_text = f"Tile: ({tile_x}, {tile_y}) - Zone: {zone_name}"
+            text_surface = font.render(coord_text, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(topleft=(10, 10))
+            # Add a background for better visibility
+            pygame.draw.rect(screen, (0, 0, 0), text_rect.inflate(10, 10))
+            screen.blit(text_surface, text_rect)
 
         # Update the display
         pygame.display.flip()

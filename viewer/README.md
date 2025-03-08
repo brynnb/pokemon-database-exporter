@@ -1,10 +1,6 @@
 # Pokemon Tile Viewer
 
-This project provides three different ways to view the tiles from the Pokemon database:
-
-1. **Pygame Viewer** - An interactive viewer using Pygame
-2. **Simple Image Viewer** - A static image generator using Pillow
-3. **Web Viewer** - A web-based viewer using Flask
+The Pygame viewer provides an interactive way to view the tiles with panning capabilities.
 
 ## Prerequisites
 
@@ -14,17 +10,20 @@ Before using any of the viewers, make sure you have the required dependencies in
 pip install pygame pillow flask
 ```
 
-## 1. Pygame Viewer
 
-The Pygame viewer provides an interactive way to view the tiles with panning capabilities.
 
 ### Usage
 
 ```bash
-python tile_viewer.py [zone_id]
+npm run viewer overworld [zone_id]
 ```
 
-If no zone_id is provided, it will default to zone 15.
+To view all overworld zones:
+
+
+```bash
+npm run viewer overworld
+```
 
 ### Controls
 
