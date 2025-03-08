@@ -94,6 +94,16 @@ async function runExports() {
   }
   log("Objects export successful");
 
+  // Run update object coordinates
+  const objectCoordinatesSuccess = runCommand(
+    "python3 export_scripts/update_object_coordinates.py"
+  );
+  if (!objectCoordinatesSuccess) {
+    log("Update object coordinates failed");
+    return;
+  }
+  log("Update object coordinates successful");
+
   // Run move files script
   const moveFilesSuccess = runCommand("python3 export_scripts/move_files.py");
   if (!moveFilesSuccess) {
