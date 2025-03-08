@@ -19,12 +19,8 @@ The export process:
 8. Parse 2bpp files to extract tile data
 9. Store all data in a SQLite database
 
-The script also provides functionality to render maps based on the extracted data.
-
 Usage:
     python export_map.py                # Export map data to pokemon.db
-    python export_map.py --render MAP   # Render a map and save it to MAP.png
-    python export_map.py --render MAP --output FILE  # Render a map and save it to FILE
 """
 
 import os
@@ -558,12 +554,11 @@ def decode_2bpp_tile(tile_data):
     return pixels
 
 
-def render_map(map_name, output_path=None):
+def render_map(map_name):
     """Render a map based on the data in the database
 
     Args:
         map_name: The name of the map to render
-        output_path: The path to save the rendered map image
 
     Returns:
         PIL.Image: The rendered map image
@@ -682,11 +677,6 @@ def render_map(map_name, output_path=None):
                                         ),
                                         fill=pixel_color,
                                     )
-
-    # Save the image if an output path is provided
-    if output_path:
-        img.save(output_path)
-        print(f"Map rendered and saved to {output_path}")
 
     return img
 
@@ -1014,16 +1004,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Export Pokémon map data to a database"
     )
-    parser.add_argument("--render", help="Render a map and save it to an image file")
-    parser.add_argument("--output", help="Output path for the rendered map image")
     args = parser.parse_args()
-
-    if args.render:
-        if not os.path.exists("pokemon.db"):
-            print("Database not found. Running export first...")
-            main()
-
-        output_path = args.output or f"{args.render}.png"
-        render_map(args.render, output_path)
-    else:
-        main()
+    main()

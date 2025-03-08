@@ -5,6 +5,10 @@ pokemon-game-data/*
 !pokemon-game-data/
 !pokemon-game-data/.gitkeep
 
+# Ignore contents of sprites folder but keep the folder itself
+sprites/*
+!sprites/.gitkeep
+
 tile_images/
 
 .cursor
