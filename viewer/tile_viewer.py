@@ -153,7 +153,7 @@ def load_tiles(zone_id):
 
     cursor.execute(
         """
-        SELECT x, y, tile_image_id FROM tiles WHERE zone_id = ?
+        SELECT x, y, tile_image_id, local_x, local_y FROM tiles WHERE zone_id = ?
     """,
         (zone_id,),
     )
@@ -393,7 +393,7 @@ def load_all_overworld_tiles():
     # Get all tiles marked as overworld
     cursor.execute(
         """
-        SELECT x, y, tile_image_id, zone_id FROM tiles WHERE is_overworld = 1
+        SELECT x, y, tile_image_id, zone_id, local_x, local_y FROM tiles WHERE is_overworld = 1
     """
     )
 
@@ -464,7 +464,7 @@ def load_specific_zones(zone_ids):
     # Get all tiles for the specified zones
     cursor.execute(
         f"""
-        SELECT x, y, tile_image_id, zone_id FROM tiles WHERE zone_id IN ({placeholders})
+        SELECT x, y, tile_image_id, zone_id, local_x, local_y FROM tiles WHERE zone_id IN ({placeholders})
         """,
         zone_ids,
     )
@@ -544,7 +544,12 @@ def render_map(tile_images, tiles, zone_info, zoom_level, zone_colors=None):
     # Render each tile
     for tile in tiles:
         if OVERWORLD_MODE or MULTI_ZONE_MODE:
-            x, y, tile_image_id, zone_id = tile
+            if len(tile) >= 6:  # Check if we have local_x and local_y
+                x, y, tile_image_id, zone_id, local_x, local_y = tile
+            else:
+                x, y, tile_image_id, zone_id = tile[:4]
+                local_x = local_y = None
+
             # Draw a colored border around each zone's tiles
             if zone_colors and zone_id in zone_colors:
                 border_color = zone_colors[zone_id]
@@ -556,7 +561,11 @@ def render_map(tile_images, tiles, zone_info, zoom_level, zone_colors=None):
                 )
                 pygame.draw.rect(map_surface, border_color, border_rect, 1)
         else:
-            x, y, tile_image_id = tile
+            if len(tile) >= 5:  # Check if we have local_x and local_y
+                x, y, tile_image_id, local_x, local_y = tile
+            else:
+                x, y, tile_image_id = tile[:3]
+                local_x = local_y = None
 
         if tile_image_id in tile_images:
             # Get the original image
@@ -584,11 +593,15 @@ def screen_to_tile_coords(
     map_x = screen_x - offset_x
     map_y = screen_y - offset_y
 
-    # Convert to tile coordinates
+    # Convert to tile coordinates (global coordinates)
     tile_x = int(map_x / (TILE_SIZE * zoom_level)) + zone_info["min_x"]
     tile_y = int(map_y / (TILE_SIZE * zoom_level)) + zone_info["min_y"]
 
-    return tile_x, tile_y
+    # Calculate local coordinates (relative to zone's min_x and min_y)
+    local_x = tile_x - zone_info["min_x"]
+    local_y = tile_y - zone_info["min_y"]
+
+    return tile_x, tile_y, local_x, local_y
 
 
 def get_zone_name_for_tile(tile_x, tile_y, tile_to_zone_map, zone_names_cache=None):
@@ -726,7 +739,11 @@ def main():
     # Create a mapping of tile positions to zone IDs for quick lookup
     tile_to_zone_map = {}
     if OVERWORLD_MODE or MULTI_ZONE_MODE:
-        for x, y, _, zone_id in tiles:
+        for tile in tiles:
+            if len(tile) >= 6:  # With local_x, local_y
+                x, y, _, zone_id = tile[:4]
+            else:
+                x, y, _, zone_id = tile[:4]
             tile_to_zone_map[(x, y)] = zone_id
 
     while running:
@@ -823,7 +840,12 @@ def main():
                     # Draw outlines for each zone
                     if (OVERWORLD_MODE or MULTI_ZONE_MODE) and zone_colors:
                         for tile in tiles:
-                            x, y, _, zone_id = tile
+                            # Extract x, y, and zone_id regardless of tuple length
+                            if len(tile) >= 6:  # With local_x, local_y
+                                x, y, _, zone_id = tile[:4]
+                            else:
+                                x, y, _, zone_id = tile[:4]
+
                             if zone_id in zone_colors:
                                 border_color = zone_colors[zone_id]
                                 # Make the border fully opaque
@@ -943,24 +965,56 @@ def main():
 
         # Get mouse position and convert to tile coordinates
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        tile_x, tile_y = screen_to_tile_coords(
+        tile_x, tile_y, _, _ = screen_to_tile_coords(
             mouse_x, mouse_y, offset_x, offset_y, zone_info, zoom_level
         )
 
         # Check if the mouse is over the map
         map_rect = map_surface.get_rect(topleft=(offset_x, offset_y))
         if map_rect.collidepoint(mouse_x, mouse_y):
-            # Get zone name for the current tile
+            # Get zone name and local coordinates for the current tile
             zone_name = None
-            if OVERWORLD_MODE or MULTI_ZONE_MODE:
-                zone_name = get_zone_name_for_tile(
-                    tile_x, tile_y, tile_to_zone_map, zone_names_cache
-                )
+            db_local_x = None
+            db_local_y = None
+            found_tile = False
+            
+            # Find the tile at the current position to get its database local_x and local_y
+            for tile in tiles:
+                if OVERWORLD_MODE or MULTI_ZONE_MODE:
+                    if len(tile) >= 6:  # Make sure we have local_x and local_y
+                        x, y, _, zone_id, db_local_x, db_local_y = tile
+                    else:
+                        x, y, _, zone_id = tile[:4]
+                else:
+                    if len(tile) >= 5:  # Make sure we have local_x and local_y
+                        x, y, _, db_local_x, db_local_y = tile
+                    else:
+                        x, y, _ = tile[:3]
+                
+                if x == tile_x and y == tile_y:
+                    found_tile = True
+                    if OVERWORLD_MODE or MULTI_ZONE_MODE:
+                        zone_name = get_zone_name_for_tile(
+                            tile_x, tile_y, tile_to_zone_map, zone_names_cache
+                        )
+                    else:
+                        zone_name = zone_info["name"]
+                    break
             else:
-                zone_name = zone_info["name"]
+                # If no tile was found at this position
+                if OVERWORLD_MODE or MULTI_ZONE_MODE:
+                    zone_name = get_zone_name_for_tile(
+                        tile_x, tile_y, tile_to_zone_map, zone_names_cache
+                    )
+                else:
+                    zone_name = zone_info["name"]
 
             # Display tile coordinates and zone name
-            coord_text = f"Tile: ({tile_x}, {tile_y}) - Zone: {zone_name}"
+            if found_tile and db_local_x is not None and db_local_y is not None:
+                coord_text = f"Global: ({tile_x}, {tile_y}) - Local: ({db_local_x}, {db_local_y}) - Zone: {zone_name}"
+            else:
+                coord_text = f"Global: ({tile_x}, {tile_y}) - Zone: {zone_name}"
+                
             text_surface = font.render(coord_text, True, (255, 255, 255))
             text_rect = text_surface.get_rect(topleft=(10, 10))
             # Add a background for better visibility

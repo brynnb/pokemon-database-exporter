@@ -60,6 +60,8 @@ def create_new_tables():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         x INTEGER NOT NULL,
         y INTEGER NOT NULL,
+        local_x INTEGER NOT NULL,
+        local_y INTEGER NOT NULL,
         zone_id INTEGER NOT NULL,
         tile_image_id INTEGER NOT NULL,
         is_overworld INTEGER NOT NULL DEFAULT 0,
@@ -527,7 +529,17 @@ def populate_tiles(conn, block_pos_to_image_id):
                         continue
 
                 # Add to map tiles
-                map_tiles.append((tile_x, tile_y, zone_id, tile_image_id))
+                map_tiles.append(
+                    (
+                        tile_x,
+                        tile_y,
+                        tile_x,
+                        tile_y,
+                        zone_id,
+                        tile_image_id,
+                        is_overworld,
+                    )
+                )
 
         # Sort map tiles by y-coordinate in descending order (top to bottom becomes bottom to top)
         map_tiles.sort(key=lambda t: (-t[1], t[0]))
@@ -540,8 +552,8 @@ def populate_tiles(conn, block_pos_to_image_id):
         if len(tiles_data) >= BATCH_SIZE:
             cursor.executemany(
                 """
-            INSERT INTO tiles (x, y, zone_id, tile_image_id)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tiles (x, y, local_x, local_y, zone_id, tile_image_id, is_overworld)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
                 tiles_data,
             )
@@ -552,8 +564,8 @@ def populate_tiles(conn, block_pos_to_image_id):
     if tiles_data:
         cursor.executemany(
             """
-        INSERT INTO tiles (x, y, zone_id, tile_image_id)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO tiles (x, y, local_x, local_y, zone_id, tile_image_id, is_overworld)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             tiles_data,
         )
