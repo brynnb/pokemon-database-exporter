@@ -10,7 +10,6 @@ CONSTANTS_DIR = Path("pokemon-game-data/constants")
 MAP_HEADERS_DIR = Path("pokemon-game-data/data/maps/headers")
 
 # Object types
-OBJECT_TYPE_WARP = "warp"
 OBJECT_TYPE_BG = "sign"
 OBJECT_TYPE_OBJECT = "npc"
 OBJECT_TYPE_ITEM = "item"
@@ -34,9 +33,6 @@ def create_database():
         object_type TEXT NOT NULL,
         x INTEGER,
         y INTEGER,
-        warp_x INTEGER,
-        warp_y INTEGER,
-        warp_zone_id INTEGER,
         spriteset_id INTEGER,
         sprite_name TEXT,
         text TEXT,
@@ -44,7 +40,6 @@ def create_database():
         action_direction TEXT,
         item_id INTEGER,
         FOREIGN KEY (zone_id) REFERENCES zones (id),
-        FOREIGN KEY (warp_zone_id) REFERENCES zones (id),
         FOREIGN KEY (item_id) REFERENCES items (id)
     )
     """
@@ -138,50 +133,6 @@ def parse_map_name_from_file(file_path):
     file_name = os.path.basename(file_path)
     map_name = os.path.splitext(file_name)[0]
     return map_name
-
-
-def parse_warp_events(content, map_name, cursor, map_to_zone):
-    """Parse warp events from the map object file"""
-    warps = []
-
-    # Find the warp events section
-    warp_section_match = re.search(
-        r"def_warp_events(.*?)(?:def_bg_events|def_object_events|\Z)",
-        content,
-        re.DOTALL,
-    )
-    if not warp_section_match:
-        return warps
-
-    warp_section = warp_section_match.group(1)
-
-    # Extract individual warp events
-    warp_pattern = r"warp_event\s+(\d+),\s+(\d+),\s+(\w+),\s+(\d+)"
-    warp_matches = re.finditer(warp_pattern, warp_section)
-
-    for i, match in enumerate(warp_matches):
-        x = int(match.group(1))
-        y = int(match.group(2))
-        destination = match.group(3)
-        destination_warp_id = int(match.group(4))
-
-        # Get destination zone ID
-        destination_zone_id = get_zone_id_for_map(destination, map_to_zone)
-
-        warps.append(
-            {
-                "name": f"{map_name}_WARP_{i+1}",
-                "object_type": OBJECT_TYPE_WARP,
-                "x": x,
-                "y": y,
-                "warp_zone_id": destination_zone_id,
-                "warp_x": None,  # We don't have this information directly
-                "warp_y": None,  # We don't have this information directly
-                "sprite_name": None,
-            }
-        )
-
-    return warps
 
 
 def parse_bg_events(content, map_name):
@@ -341,12 +292,11 @@ def process_map_file(file_path, cursor, map_to_zone):
         content = f.read()
 
     # Parse different types of objects
-    warps = parse_warp_events(content, map_name, cursor, map_to_zone)
     signs = parse_bg_events(content, map_name)
     objects = parse_object_events(content, map_name, cursor)
 
     # Combine all objects and add zone_id
-    all_objects = warps + signs + objects
+    all_objects = signs + objects
     for obj in all_objects:
         obj["zone_id"] = zone_id
 
@@ -374,9 +324,9 @@ def main():
         cursor.execute(
             """
         INSERT INTO objects (
-            name, zone_id, object_type, x, y, warp_x, warp_y, warp_zone_id,
+            name, zone_id, object_type, x, y,
             spriteset_id, sprite_name, text, action_type, action_direction, item_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 obj.get("name"),
@@ -384,9 +334,6 @@ def main():
                 obj.get("object_type"),
                 obj.get("x"),
                 obj.get("y"),
-                obj.get("warp_x"),
-                obj.get("warp_y"),
-                obj.get("warp_zone_id"),
                 obj.get("spriteset_id"),
                 obj.get("sprite_name"),
                 obj.get("text"),

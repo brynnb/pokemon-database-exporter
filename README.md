@@ -2,7 +2,6 @@
 
 This project exports data from the Pokémon Red/Blue game files into a SQLite database for easier analysis and use in other applications.
 
-
 ## Installation
 
 1. Clone this repository:
@@ -92,7 +91,6 @@ This tool extracts all this data and stores it in a structured SQLite database, 
    - Linux: Follow instructions at https://rgbds.gbdev.io/install/
    - Windows: Download from https://github.com/gbdev/rgbds/releases
 
-
 ## How It Works
 
 The tool follows the process described in MAPLOGIC.md:
@@ -106,3 +104,72 @@ The tool follows the process described in MAPLOGIC.md:
 7. Parse blockset files to extract block data
 8. Parse 2bpp files to extract tile data
 9. Store all data in a SQLite database
+
+## How Warps Work
+
+Warps connect different maps in the game, allowing the player to move between locations. Each warp is defined with specific coordinates and a destination.
+
+### Warp Definition Format
+
+Warps are defined in map object files (e.g., `data/maps/objects/OaksLab.asm`) using the following format:
+
+```
+def_warp_events
+    warp_event  x, y, DESTINATION_MAP, warp_id
+```
+
+Where:
+
+- `x, y`: Coordinates of the warp tile on the current map
+- `DESTINATION_MAP`: Constant for the destination map
+- `warp_id`: 1-based index of the corresponding warp in the destination map
+
+### How Warp Connections Work
+
+The warp system uses 1-based indexing to connect warps between maps. When a player steps on a warp tile, the game:
+
+1. Identifies which warp was triggered on the current map
+2. Looks up the destination map and warp index
+3. Finds the corresponding warp in the destination map
+4. Places the player at those coordinates
+
+### The LAST_MAP Special Value
+
+Many warps in the game use a special value called `LAST_MAP` instead of a specific map constant. When the game encounters `LAST_MAP`, it uses the player's previous map as the destination. The game engine maintains a record of which map the player was in before entering the current map.
+
+This approach simplifies the implementation of buildings and areas that should always return the player to wherever they entered from. Instead of hardcoding specific map connections, the game can dynamically determine the correct return location.
+
+### Database Implementation Considerations
+
+When creating a database representation of the game's maps and warps, the `LAST_MAP` value presents a challenge since it's a runtime value rather than a static connection. There are several approaches to handle this:
+
+1. **Explicit Connections**: Replace `LAST_MAP` with explicit connections between each pair of connected maps. This requires identifying all possible entry points to a map and creating direct connections.
+
+2. **Previous Map Tracking**: Implement a system that tracks the player's previous map, similar to how the game engine works. This maintains the dynamic nature of `LAST_MAP`.
+
+3. **Bidirectional References**: Store warps in a table with bidirectional references, where each warp knows both its source and destination. When a warp uses `LAST_MAP`, the database can resolve this at query time.
+
+### Example: Oak's Lab and Pallet Town
+
+In `data/maps/objects/OaksLab.asm`, we have:
+
+```
+def_warp_events
+    warp_event  4, 11, LAST_MAP, 3
+    warp_event  5, 11, LAST_MAP, 3
+```
+
+This defines two warp tiles at coordinates (4,11) and (5,11) that both lead to warp #3 of the previous map (Pallet Town).
+
+In `data/maps/objects/PalletTown.asm`, we have:
+
+```
+def_warp_events
+    warp_event  5,  5, REDS_HOUSE_1F, 1
+    warp_event 13,  5, BLUES_HOUSE, 1
+    warp_event 12, 11, OAKS_LAB, 2
+```
+
+The third warp (index 3) is at coordinates (12,11) and leads to warp #2 in Oak's Lab.
+
+So when a player steps on either tile (4,11) or (5,11) in Oak's Lab, they are transported to coordinates (12,11) in Pallet Town, which is the door to Oak's Lab. Conversely, when a player steps on tile (12,11) in Pallet Town, they are transported to the second warp in Oak's Lab.

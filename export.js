@@ -56,13 +56,7 @@ async function runExports() {
   }
   log("Map export successful");
 
-  // Run objects exports
-  const objectsSuccess = runCommand("python3 export_objects.py");
-  if (!objectsSuccess) {
-    log("Objects export failed");
-    return;
-  }
-  log("Objects export successful");
+  
 
   // Run create zones and tiles
   const zonesAndTilesSuccess = runCommand("python3 create_zones_and_tiles.py");
@@ -89,6 +83,15 @@ async function runExports() {
     return;
   }
   log("Update zone coordinates successful");
+
+
+  // Run objects exports
+  const objectsSuccess = runCommand("python3 export_objects.py");
+  if (!objectsSuccess) {
+    log("Objects export failed");
+    return;
+  }
+  log("Objects export successful");
 
   log("All exports completed");
 }
