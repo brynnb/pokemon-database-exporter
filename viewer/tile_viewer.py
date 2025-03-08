@@ -977,7 +977,7 @@ def main():
             db_local_x = None
             db_local_y = None
             found_tile = False
-            
+
             # Find the tile at the current position to get its database local_x and local_y
             for tile in tiles:
                 if OVERWORLD_MODE or MULTI_ZONE_MODE:
@@ -990,7 +990,7 @@ def main():
                         x, y, _, db_local_x, db_local_y = tile
                     else:
                         x, y, _ = tile[:3]
-                
+
                 if x == tile_x and y == tile_y:
                     found_tile = True
                     if OVERWORLD_MODE or MULTI_ZONE_MODE:
@@ -1014,7 +1014,7 @@ def main():
                 coord_text = f"Global: ({tile_x}, {tile_y}) - Local: ({db_local_x}, {db_local_y}) - Zone: {zone_name}"
             else:
                 coord_text = f"Global: ({tile_x}, {tile_y}) - Zone: {zone_name}"
-                
+
             text_surface = font.render(coord_text, True, (255, 255, 255))
             text_rect = text_surface.get_rect(topleft=(10, 10))
             # Add a background for better visibility

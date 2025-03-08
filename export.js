@@ -28,53 +28,67 @@ async function runExports() {
   const itemsSuccess = runCommand("python3 export_items.py");
   if (!itemsSuccess) {
     log("Item export failed");
+    return;
   }
+  log("Item export successful");
 
   // Run move exports
   const movesSuccess = runCommand("python3 export_moves.py");
   if (!movesSuccess) {
     log("Move export failed");
+    return;
   }
+  log("Move export successful");
+
+  // Run pokemon exports
+  const pokemonSuccess = runCommand("python3 export_pokemon.py");
+  if (!pokemonSuccess) {
+    log("Pokemon export failed");
+    return;
+  }
+  log("Pokemon export successful");
 
   // Run map exports
   const mapsSuccess = runCommand("python3 export_map.py");
   if (!mapsSuccess) {
     log("Map export failed");
-  } else {
-    log("Map export successful");
-
-    // Render some popular maps
-    const popularMaps = [
-      "PALLET_TOWN",
-      "VIRIDIAN_CITY",
-      "PEWTER_CITY",
-      "CERULEAN_CITY",
-      "CELADON_CITY",
-      "LAVENDER_TOWN",
-      "VERMILION_CITY",
-      "SAFFRON_CITY",
-      "CINNABAR_ISLAND",
-      "INDIGO_PLATEAU",
-      "BIKE_SHOP",
-    ];
-
-    // Create maps directory if it doesn't exist
-    runCommand("mkdir -p exported_maps");
-
-    // Render each map
-    let renderedCount = 0;
-    for (const map of popularMaps) {
-      log(`Rendering map: ${map}`);
-      const renderSuccess = runCommand(
-        `python3 export_map.py --render ${map} --output exported_maps/${map.toLowerCase()}.png`
-      );
-      if (renderSuccess) {
-        renderedCount++;
-      }
-    }
-
-    log(`Successfully rendered ${renderedCount} of ${popularMaps.length} maps`);
+    return;
   }
+  log("Map export successful");
+
+  // Run objects exports
+  const objectsSuccess = runCommand("python3 export_objects.py");
+  if (!objectsSuccess) {
+    log("Objects export failed");
+    return;
+  }
+  log("Objects export successful");
+
+  // Run create zones and tiles
+  const zonesAndTilesSuccess = runCommand("python3 create_zones_and_tiles.py");
+  if (!zonesAndTilesSuccess) {
+    log("Create zones and tiles failed");
+    return;
+  }
+  log("Create zones and tiles successful");
+
+  // Run update overworld tiles
+  const overworldTilesSuccess = runCommand("python3 update_overworld_tiles.py");
+  if (!overworldTilesSuccess) {
+    log("Update overworld tiles failed");
+    return;
+  }
+  log("Update overworld tiles successful");
+
+  // Run update zone coordinates
+  const zoneCoordinatesSuccess = runCommand(
+    "python3 update_zone_coordinates.py"
+  );
+  if (!zoneCoordinatesSuccess) {
+    log("Update zone coordinates failed");
+    return;
+  }
+  log("Update zone coordinates successful");
 
   log("All exports completed");
 }

@@ -228,6 +228,10 @@ def extract_tile_images(conn):
         sys.stdout.write(f"\rProcessing tileset {i}/{total_tilesets}: {tileset_name}")
         sys.stdout.flush()
 
+        # Special case: Map DOJO (tileset ID 5) to GYM (tileset ID 7)
+        # This is because in the original game, DOJO uses the same graphics as GYM
+        query_tileset_id = 7 if tileset_id == 5 else tileset_id
+
         # Get blockset data for this tileset
         cursor.execute(
             """
@@ -236,7 +240,7 @@ def extract_tile_images(conn):
         WHERE tileset_id = ? 
         ORDER BY block_index
         """,
-            (tileset_id,),
+            (query_tileset_id,),
         )
 
         blockset_rows = cursor.fetchall()
@@ -252,7 +256,7 @@ def extract_tile_images(conn):
         WHERE tileset_id = ? 
         ORDER BY tile_index
         """,
-            (tileset_id,),
+            (query_tileset_id,),
         )
 
         tile_rows = cursor.fetchall()
@@ -322,6 +326,9 @@ def extract_tile_images(conn):
                     block_pos_to_image_id[(tileset_id, block_index, pos_index)] = (
                         existing_image_id
                     )
+                    # Special case: If this is the GYM tileset (ID 7), also store the mapping for DOJO (ID 5)
+                    if tileset_id == 7:
+                        block_pos_to_image_id[(5, block_index, pos_index)] = existing_image_id
                     duplicate_count += 1
                 else:
                     # Save the image with a sequential number
@@ -343,6 +350,9 @@ def extract_tile_images(conn):
                     block_pos_to_image_id[(tileset_id, block_index, pos_index)] = (
                         image_id
                     )
+                    # Special case: If this is the GYM tileset (ID 7), also store the mapping for DOJO (ID 5)
+                    if tileset_id == 7:
+                        block_pos_to_image_id[(5, block_index, pos_index)] = image_id
                     unique_image_count += 1
 
                 tile_image_count += 1
@@ -504,6 +514,10 @@ def populate_tiles(conn, block_pos_to_image_id):
 
         # Process each raw tile
         for raw_x, raw_y, block_index, raw_tileset_id, raw_is_overworld in raw_tiles:
+            # Special case: Map DOJO (tileset ID 5) to GYM (tileset ID 7)
+            # This is because in the original game, DOJO uses the same graphics as GYM
+            lookup_tileset_id = 7 if raw_tileset_id == 5 else raw_tileset_id
+
             # Each block corresponds to 4 tiles (2x2 grid)
             # We need to create 4 entries in the tiles table
             for position in range(4):
@@ -518,12 +532,12 @@ def populate_tiles(conn, block_pos_to_image_id):
 
                 # Get the tile_image_id from our dictionary
                 tile_image_id = block_pos_to_image_id.get(
-                    (raw_tileset_id, block_index, position)
+                    (lookup_tileset_id, block_index, position)
                 )
                 if not tile_image_id:
                     # Try with a default position if specific position not found
                     tile_image_id = block_pos_to_image_id.get(
-                        (raw_tileset_id, block_index, 0)
+                        (lookup_tileset_id, block_index, 0)
                     )
                     if not tile_image_id:
                         continue
