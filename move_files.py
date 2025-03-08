@@ -50,6 +50,45 @@ def extract_tileset_signs():
     return extracted_count > 0
 
 
+def make_poke_ball_transparent(source_path, dest_path):
+    """
+    Make white pixels in poke_ball.png transparent
+    """
+    try:
+        # Open the image
+        img = Image.open(source_path)
+
+        # Convert to RGBA if it's not already
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+
+        # Get the pixel data
+        data = img.getdata()
+
+        # Create a new list for the modified pixel data
+        new_data = []
+
+        # For each pixel, if it's white, make it transparent
+        for item in data:
+            # Check if the pixel is white (255, 255, 255)
+            if item[0] == 255 and item[1] == 255 and item[2] == 255:
+                # Make it transparent (R, G, B, A = 0)
+                new_data.append((255, 255, 255, 0))
+            else:
+                new_data.append(item)
+
+        # Update the image with the new data
+        img.putdata(new_data)
+
+        # Save the modified image
+        img.save(dest_path)
+        print(f"Made white pixels transparent in poke_ball.png")
+        return True
+    except Exception as e:
+        print(f"Error making poke_ball.png transparent: {e}")
+        return False
+
+
 def copy_sprite_files():
     """
     Copy PNG files from pokemon-game-data/gfx/sprites to the sprites folder
@@ -75,7 +114,12 @@ def copy_sprite_files():
         dest_path = os.path.join(dest_dir, filename)
 
         try:
-            shutil.copy2(png_file, dest_path)
+            # Special handling for poke_ball.png
+            if filename == "poke_ball.png":
+                make_poke_ball_transparent(png_file, dest_path)
+            else:
+                shutil.copy2(png_file, dest_path)
+
             copied_count += 1
             print(f"Copied: {filename}")
         except Exception as e:

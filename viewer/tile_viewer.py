@@ -531,7 +531,37 @@ def load_specific_zones(zone_ids):
     )
 
 
-def render_map(tile_images, tiles, zone_info, zoom_level, zone_colors=None):
+def load_items():
+    """Load all items from the objects table where object_type is 'item' and zone is overworld"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Get all items from overworld zones
+    cursor.execute(
+        """
+        SELECT o.id, o.zone_id, o.x, o.y, o.item_id, i.name 
+        FROM objects o
+        LEFT JOIN items i ON o.item_id = i.id
+        JOIN zones z ON o.zone_id = z.id
+        WHERE o.object_type = 'item' AND z.is_overworld = 1
+    """
+    )
+
+    items = cursor.fetchall()
+    conn.close()
+    print(f"Loaded {len(items)} items from overworld zones")
+    return items
+
+
+def render_map(
+    tile_images,
+    tiles,
+    zone_info,
+    zoom_level,
+    zone_colors=None,
+    items=None,
+    poke_ball_image=None,
+):
     """Render the map to a surface"""
     # Calculate the size of the map in pixels
     map_width = int(zone_info["width"] * TILE_SIZE * zoom_level)
@@ -581,6 +611,37 @@ def render_map(tile_images, tiles, zone_info, zoom_level, zone_colors=None):
 
             # Draw the tile
             map_surface.blit(scaled_image, (pos_x, pos_y))
+
+    # Render items if provided
+    if items and poke_ball_image:
+        for item in items:
+            item_id, zone_id, x, y, db_item_id, item_name = item
+            if x is not None and y is not None:
+                # Skip items that are not in the current view
+                if not OVERWORLD_MODE and not MULTI_ZONE_MODE and zone_id != zone_id:
+                    continue
+                if MULTI_ZONE_MODE and zone_id not in ZONE_IDS:
+                    continue
+
+                # Check if the item is within the visible map area
+                if (
+                    x < zone_info["min_x"]
+                    or x > zone_info["max_x"]
+                    or y < zone_info["min_y"]
+                    or y > zone_info["max_y"]
+                ):
+                    continue
+
+                # Calculate the position on the map
+                pos_x = int((x - zone_info["min_x"]) * TILE_SIZE * zoom_level)
+                pos_y = int((y - zone_info["min_y"]) * TILE_SIZE * zoom_level)
+
+                # Scale the Poké Ball image based on the zoom level
+                scaled_size = (int(TILE_SIZE * zoom_level), int(TILE_SIZE * zoom_level))
+                scaled_image = pygame.transform.scale(poke_ball_image, scaled_size)
+
+                # Draw the item
+                map_surface.blit(scaled_image, (pos_x, pos_y))
 
     return map_surface, map_width, map_height
 
@@ -684,6 +745,29 @@ def main():
     tile_images = load_tile_images()
     print(f"Loaded {len(tile_images)} tile images")
 
+    # Load items
+    print("Loading items...")
+    items = load_items()
+    print(f"Loaded {len(items)} items")
+
+    # Load Poké Ball image for items
+    poke_ball_image = None
+    try:
+        poke_ball_path = os.path.join("..", "sprites", "poke_ball.png")
+        if os.path.exists(poke_ball_path):
+            poke_ball_image = pygame.image.load(poke_ball_path)
+        else:
+            # Try alternative path
+            poke_ball_path = os.path.join(
+                "..", "pokemon-game-data", "gfx", "sprites", "poke_ball.png"
+            )
+            if os.path.exists(poke_ball_path):
+                poke_ball_image = pygame.image.load(poke_ball_path)
+            else:
+                print("Warning: Could not find poke_ball.png")
+    except Exception as e:
+        print(f"Error loading Poké Ball image: {e}")
+
     # Load tiles and zone info
     if OVERWORLD_MODE:
         print("Loading all overworld maps...")
@@ -715,11 +799,17 @@ def main():
     # Render the initial map
     if OVERWORLD_MODE or MULTI_ZONE_MODE:
         map_surface, map_width, map_height = render_map(
-            tile_images, tiles, zone_info, zoom_level, zone_colors
+            tile_images,
+            tiles,
+            zone_info,
+            zoom_level,
+            zone_colors,
+            items,
+            poke_ball_image,
         )
     else:
         map_surface, map_width, map_height = render_map(
-            tile_images, tiles, zone_info, zoom_level
+            tile_images, tiles, zone_info, zoom_level, None, items, poke_ball_image
         )
 
     # Center the map initially
@@ -745,6 +835,13 @@ def main():
             else:
                 x, y, _, zone_id = tile[:4]
             tile_to_zone_map[(x, y)] = zone_id
+
+    # Create a mapping of tile positions to items for quick lookup
+    tile_to_item_map = {}
+    for item in items:
+        item_id, zone_id, x, y, db_item_id, item_name = item
+        if x is not None and y is not None:
+            tile_to_item_map[(x, y)] = (db_item_id, item_name)
 
     while running:
         for event in pygame.event.get():
@@ -781,11 +878,23 @@ def main():
                     # Re-render the map at the new zoom level
                     if OVERWORLD_MODE or MULTI_ZONE_MODE:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level, zone_colors
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            zone_colors,
+                            items,
+                            poke_ball_image,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            None,
+                            items,
+                            poke_ball_image,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -810,11 +919,23 @@ def main():
                     # Re-render the map at the new zoom level
                     if OVERWORLD_MODE or MULTI_ZONE_MODE:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level, zone_colors
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            zone_colors,
+                            items,
+                            poke_ball_image,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            None,
+                            items,
+                            poke_ball_image,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -903,11 +1024,23 @@ def main():
                     # Re-render the map at the new zoom level
                     if OVERWORLD_MODE or MULTI_ZONE_MODE:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level, zone_colors
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            zone_colors,
+                            items,
+                            poke_ball_image,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            None,
+                            items,
+                            poke_ball_image,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -931,11 +1064,23 @@ def main():
                     # Re-render the map at the new zoom level
                     if OVERWORLD_MODE or MULTI_ZONE_MODE:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level, zone_colors
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            zone_colors,
+                            items,
+                            poke_ball_image,
                         )
                     else:
                         map_surface, map_width, map_height = render_map(
-                            tile_images, tiles, zone_info, zoom_level
+                            tile_images,
+                            tiles,
+                            zone_info,
+                            zoom_level,
+                            None,
+                            items,
+                            poke_ball_image,
                         )
 
                     # Adjust offset to keep the mouse position at the same spot in the map
@@ -1009,11 +1154,19 @@ def main():
                 else:
                     zone_name = zone_info["name"]
 
-            # Display tile coordinates and zone name
+            # Check if there's an item at this position
+            item_info = ""
+            if (tile_x, tile_y) in tile_to_item_map:
+                db_item_id, item_name = tile_to_item_map[(tile_x, tile_y)]
+                item_info = f" - Item: {item_name} (ID: {db_item_id})"
+
+            # Display tile coordinates, zone name, and item info
             if found_tile and db_local_x is not None and db_local_y is not None:
-                coord_text = f"Global: ({tile_x}, {tile_y}) - Local: ({db_local_x}, {db_local_y}) - Zone: {zone_name}"
+                coord_text = f"Global: ({tile_x}, {tile_y}) - Local: ({db_local_x}, {db_local_y}) - Zone: {zone_name}{item_info}"
             else:
-                coord_text = f"Global: ({tile_x}, {tile_y}) - Zone: {zone_name}"
+                coord_text = (
+                    f"Global: ({tile_x}, {tile_y}) - Zone: {zone_name}{item_info}"
+                )
 
             text_surface = font.render(coord_text, True, (255, 255, 255))
             text_rect = text_surface.get_rect(topleft=(10, 10))
