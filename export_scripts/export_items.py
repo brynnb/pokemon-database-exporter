@@ -5,13 +5,18 @@ import sqlite3
 from pathlib import Path
 
 # Constants
-POKEMON_DATA_DIR = Path("pokemon-game-data/data/items")
-CONSTANTS_DIR = Path("pokemon-game-data/constants")
+BASE_DIR = Path(
+    __file__
+).parent.parent  # Get the parent directory of the script's directory
+POKEMON_DATA_DIR = BASE_DIR / "pokemon-game-data/data/items"
+CONSTANTS_DIR = BASE_DIR / "pokemon-game-data/constants"
+MOVES_DATA_DIR = BASE_DIR / "pokemon-game-data/data/moves"
 
 
 def create_database():
     """Create SQLite database and tables"""
-    conn = sqlite3.connect("pokemon.db")
+    # Use the database in the project root
+    conn = sqlite3.connect(BASE_DIR / "pokemon.db")
     cursor = conn.cursor()
 
     # Drop existing items table if it exists
@@ -207,20 +212,92 @@ def parse_vending_prices():
 
 
 def parse_tm_hm_moves():
-    """Parse TM/HM move IDs"""
-    # This is a simplified approach - in a real implementation, you'd need to parse
-    # the actual move IDs from the constants and data files
+    """Parse TM/HM move IDs from item_constants.asm and move_constants.asm"""
     tm_hm_moves = {}
 
+    # Read item_constants.asm to get TM/HM move mappings
+    item_constants_path = CONSTANTS_DIR / "item_constants.asm"
+
+    with open(item_constants_path, "r") as f:
+        content = f.read()
+
+    # Extract TM move mappings
+    # Format: add_tm MOVE_NAME (creates TM_MOVE_NAME constant and TM##_MOVE = MOVE_NAME)
+    tm_pattern = r"add_tm\s+(\w+)"
+    tm_matches = re.finditer(tm_pattern, content)
+
+    tm_moves = []
+    for match in tm_matches:
+        move_name = match.group(1)
+        tm_moves.append(move_name)
+
+    print(f"Found {len(tm_moves)} TM moves")
+
     # TMs start at item ID 0xC9 (201)
-    for i in range(50):
-        tm_hm_moves[201 + i] = i + 1  # Placeholder move IDs
+    for i, move_name in enumerate(tm_moves):
+        item_id = 0xC9 + i
+        move_id = get_move_id_by_name(move_name)
+        if move_id:
+            tm_hm_moves[item_id] = move_id
+            print(f"TM{i+1:02d}: {move_name} -> Move ID {move_id}")
+
+    # Extract HM move mappings
+    # Format: add_hm MOVE_NAME (creates HM_MOVE_NAME constant and HM##_MOVE = MOVE_NAME)
+    hm_pattern = r"add_hm\s+(\w+)"
+    hm_matches = re.finditer(hm_pattern, content)
+
+    hm_moves = []
+    for match in hm_matches:
+        move_name = match.group(1)
+        hm_moves.append(move_name)
+
+    print(f"Found {len(hm_moves)} HM moves")
 
     # HMs start at item ID 0xC4 (196)
-    for i in range(5):
-        tm_hm_moves[196 + i] = 51 + i  # Placeholder move IDs
+    for i, move_name in enumerate(hm_moves):
+        item_id = 0xC4 + i
+        move_id = get_move_id_by_name(move_name)
+        if move_id:
+            tm_hm_moves[item_id] = move_id
+            print(f"HM{i+1:02d}: {move_name} -> Move ID {move_id}")
 
     return tm_hm_moves
+
+
+def get_move_id_by_name(move_name):
+    """Get move ID by name from move_constants.asm"""
+    move_constants_path = CONSTANTS_DIR / "move_constants.asm"
+
+    with open(move_constants_path, "r") as f:
+        content = f.read()
+
+    # Find the move constant and get its ID
+    # In move_constants.asm, moves are defined as:
+    # const MOVE_NAME ; XX (where XX is the hex ID)
+    pattern = r"const\s+(" + re.escape(move_name) + r")\s*;\s*([0-9a-fA-F]+)"
+    match = re.search(pattern, content)
+
+    if match:
+        # Convert hex value to decimal
+        move_id = int(match.group(2), 16)
+        return move_id
+
+    # If not found directly, try with different formats
+    # Some moves have special names like PSYCHIC_M instead of PSYCHIC
+    special_cases = {
+        "PSYCHIC": "PSYCHIC_M",
+    }
+
+    if move_name in special_cases:
+        alt_name = special_cases[move_name]
+        pattern = r"const\s+(" + re.escape(alt_name) + r")\s*;\s*([0-9a-fA-F]+)"
+        match = re.search(pattern, content)
+        if match:
+            move_id = int(match.group(2), 16)
+            return move_id
+
+    print(f"Warning: Could not find move ID for {move_name}")
+    return None
 
 
 def is_item_usable(item_name, overworld_items, party_menu_items):
@@ -299,6 +376,112 @@ def main():
                 1 if is_key_item else 0,
             ),
         )
+
+    # Add TM/HM items to the database
+    # Read move names for TM/HM items
+    move_names = {}
+    move_constants_path = CONSTANTS_DIR / "move_constants.asm"
+    with open(move_constants_path, "r") as f:
+        content = f.read()
+
+    pattern = r"const\s+(\w+)\s*;\s*([0-9a-fA-F]+)"
+    matches = re.finditer(pattern, content)
+    for match in matches:
+        move_name = match.group(1)
+        move_id = int(match.group(2), 16)
+        move_names[move_id] = move_name
+
+    print(f"Found {len(move_names)} move names")
+
+    # Get the next available item ID
+    cursor.execute("SELECT MAX(id) FROM items")
+    max_id = cursor.fetchone()[0]
+    next_id = max_id + 1
+
+    # Add HM items (HM01-HM05)
+    hm_count = 0
+    for i in range(5):
+        original_item_id = 0xC4 + i  # HMs start at 0xC4
+        hm_number = i + 1
+        move_id = tm_hm_moves.get(original_item_id)
+
+        if move_id and move_id in move_names:
+            move_name = move_names[move_id]
+            item_name = f"HM{hm_number:02d}"
+            short_name = f"HM_{move_name}"
+
+            print(f"Adding HM item: {item_name} ({short_name}) with move ID {move_id}")
+
+            try:
+                # Insert HM item into database with sequential ID
+                cursor.execute(
+                    """
+                INSERT INTO items (
+                    id, name, short_name, price, is_usable, uses_party_menu, 
+                    move_id, is_guard_drink, is_key_item
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        next_id,
+                        item_name,
+                        short_name,
+                        None,  # HMs don't have a price
+                        1,  # HMs are usable
+                        1,  # HMs use party menu
+                        move_id,
+                        0,  # Not a guard drink
+                        1,  # HMs are key items
+                    ),
+                )
+                hm_count += 1
+                next_id += 1
+            except sqlite3.Error as e:
+                print(f"Error adding HM item {item_name}: {e}")
+
+    # Add TM items (TM01-TM50)
+    tm_count = 0
+    for i in range(50):
+        original_item_id = 0xC9 + i  # TMs start at 0xC9
+        tm_number = i + 1
+        move_id = tm_hm_moves.get(original_item_id)
+
+        if move_id and move_id in move_names:
+            move_name = move_names[move_id]
+            item_name = f"TM{tm_number:02d}"
+            short_name = f"TM_{move_name}"
+
+            print(f"Adding TM item: {item_name} ({short_name}) with move ID {move_id}")
+
+            # TMs have a price (placeholder for now)
+            price = 3000
+
+            try:
+                # Insert TM item into database with sequential ID
+                cursor.execute(
+                    """
+                INSERT INTO items (
+                    id, name, short_name, price, is_usable, uses_party_menu, 
+                    move_id, is_guard_drink, is_key_item
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        next_id,
+                        item_name,
+                        short_name,
+                        price,
+                        1,  # TMs are usable
+                        1,  # TMs use party menu
+                        move_id,
+                        0,  # Not a guard drink
+                        0,  # TMs are not key items
+                    ),
+                )
+                tm_count += 1
+                next_id += 1
+            except sqlite3.Error as e:
+                print(f"Error adding TM item {item_name}: {e}")
+
+    print(f"Added {hm_count} HM items and {tm_count} TM items to the database")
 
     # Commit changes and close connection
     conn.commit()

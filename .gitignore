@@ -14,7 +14,7 @@ tile_images/
 .cursor
 
 # Database files
-pokemon.db
+/pokemon.db
 *.db
 *.sqlite
 *.sqlite3
