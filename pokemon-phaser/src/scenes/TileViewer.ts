@@ -25,7 +25,6 @@ export class TileViewer extends Scene {
   private zoneInfo: any = null;
   private items: any[] = [];
   private npcs: any[] = [];
-  private zoneColors: Map<number, number> = new Map(); // Store zone colors for overworld mode
 
   // Camera controls
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -72,16 +71,13 @@ export class TileViewer extends Scene {
     }
 
     // Add loading text
-    this.loadingText = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2,
-      "Loading map data...",
-      {
-        color: "#ffffff",
-        fontSize: "24px",
-      }
-    );
-    this.loadingText.setOrigin(0.5);
+    this.loadingText = this.add.text(10, 50, "Loading map data...", {
+      color: "#ffffff",
+      fontSize: "18px",
+      backgroundColor: "#000000",
+    });
+    this.loadingText.setScrollFactor(0); // Fix to camera
+    this.loadingText.setDepth(1000); // Ensure it's always on top
 
     // Set up scene cleanup
     this.events.on("shutdown", this.cleanupResources, this);
@@ -156,6 +152,7 @@ export class TileViewer extends Scene {
       backgroundColor: "#000000",
     });
     this.infoText.setScrollFactor(0); // Fix to camera
+    this.infoText.setDepth(1000); // Ensure it's always on top
 
     // Add view mode indicator
     this.modeText = this.add.text(10, 30, "Overworld View", {
@@ -165,6 +162,7 @@ export class TileViewer extends Scene {
       backgroundColor: "#000000",
     });
     this.modeText.setScrollFactor(0); // Fix to camera
+    this.modeText.setDepth(1000); // Ensure it's always on top
 
     // Set up pointer move for tile info display
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
@@ -172,6 +170,16 @@ export class TileViewer extends Scene {
         this.updateTileInfo(pointer);
       }
     });
+
+    // Handle window resize
+    this.scale.on("resize", this.handleResize, this);
+  }
+
+  handleResize() {
+    // Ensure text elements stay in the correct position
+    this.infoText.setPosition(10, 10);
+    this.modeText.setPosition(10, 30);
+    this.loadingText.setPosition(10, 50);
   }
 
   update() {
@@ -287,21 +295,6 @@ export class TileViewer extends Scene {
         is_overworld: true,
       };
 
-      // Generate colors for each zone
-      this.zoneColors.clear();
-      overworldZones.forEach((zone: any) => {
-        // Generate a semi-random color based on zone ID
-        // Use a simple hash function to get a consistent color
-        const hash = zone.id * 9973; // Use a prime number for better distribution
-        const r = (hash & 0xff0000) >> 16;
-        const g = (hash & 0x00ff00) >> 8;
-        const b = hash & 0x0000ff;
-
-        // Convert RGB to a Phaser-friendly hex color with alpha
-        const color = Phaser.Display.Color.GetColor(r, g, b);
-        this.zoneColors.set(zone.id, color);
-      });
-
       this.loadingText.setText("Loading tiles...");
 
       // Load tiles from all overworld zones
@@ -351,9 +344,6 @@ export class TileViewer extends Scene {
 
       // Render the map
       this.renderMap();
-
-      // Create zone legend
-      this.createZoneLegend(overworldZones);
 
       // Update mode text
       this.modeText.setText("Overworld View");
@@ -472,12 +462,6 @@ export class TileViewer extends Scene {
       // Store the tile_image_id and zone_id for later reference
       (tileSprite as any).tileImageId = tile_image_id;
       (tileSprite as any).zoneId = zone_id;
-
-      // Apply zone color tint in overworld mode
-      if (OVERWORLD_MODE && zone_id && this.zoneColors.has(zone_id)) {
-        // Apply a very subtle tint to show zone boundaries
-        tileSprite.setTint(this.zoneColors.get(zone_id)!);
-      }
 
       // Add to container
       this.mapContainer.add(tileSprite);
@@ -603,6 +587,9 @@ export class TileViewer extends Scene {
     // Clear all loading textures
     this.loadingTextures.clear();
 
+    // Remove resize event listener
+    this.scale.off("resize", this.handleResize, this);
+
     // Clear all cached data
     this.tileImageCache.clear();
     this.tileImages.clear();
@@ -614,84 +601,5 @@ export class TileViewer extends Scene {
     if (this.mapContainer) {
       this.mapContainer.removeAll(true);
     }
-  }
-
-  // Create a legend showing zone colors
-  createZoneLegend(zones: any[]) {
-    // Remove any existing legend
-    const existingLegend = this.children.getByName("zone-legend");
-    if (existingLegend) {
-      existingLegend.destroy();
-    }
-
-    if (zones.length === 0) {
-      return;
-    }
-
-    // Create a container for the legend
-    const legend = this.add.container(this.cameras.main.width - 200, 10);
-    legend.setName("zone-legend");
-    legend.setScrollFactor(0); // Fix to camera
-
-    // Add background
-    const bg = this.add.rectangle(
-      0,
-      0,
-      180,
-      Math.min(300, zones.length * 20 + 30),
-      0x000000,
-      0.7
-    );
-    legend.add(bg);
-
-    // Add title
-    const title = this.add.text(0, 5, "Zone Legend", {
-      fontFamily: "Arial",
-      fontSize: "14px",
-      color: "#ffffff",
-    });
-    title.setOrigin(0.5, 0);
-    legend.add(title);
-
-    // Add zone entries (limit to 10 for space)
-    const displayZones = zones.slice(0, 10);
-    displayZones.forEach((zone, index) => {
-      // Color box
-      const color = this.zoneColors.get(zone.id) || 0xffffff;
-      const colorBox = this.add.rectangle(-80, 30 + index * 20, 10, 10, color);
-      legend.add(colorBox);
-
-      // Zone name
-      const text = this.add.text(
-        -65,
-        25 + index * 20,
-        `${zone.id}: ${zone.name.substring(0, 15)}`,
-        {
-          fontFamily: "Arial",
-          fontSize: "12px",
-          color: "#ffffff",
-        }
-      );
-      text.setOrigin(0, 0);
-      legend.add(text);
-    });
-
-    // Add "more..." text if there are more zones
-    if (zones.length > 10) {
-      const moreText = this.add.text(
-        0,
-        30 + 10 * 20,
-        `+ ${zones.length - 10} more zones...`,
-        {
-          fontFamily: "Arial",
-          fontSize: "12px",
-          color: "#aaaaaa",
-        }
-      );
-      moreText.setOrigin(0.5, 0);
-      legend.add(moreText);
-    }
-
-    return legend;
   }
 }
