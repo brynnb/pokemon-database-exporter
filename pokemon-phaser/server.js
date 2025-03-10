@@ -22,12 +22,8 @@ app.use(express.static(path.join(__dirname, ".")));
 app.get("/api/tile-image/:id", (req, res) => {
   const tileId = req.params.id;
 
-  // Add detailed logging for debugging
-  console.log(`Tile image request for ID: ${tileId}`);
-
   // Validate that tileId is a number
   if (isNaN(parseInt(tileId))) {
-    console.log(`Invalid tile ID: ${tileId}`);
     return res.status(400).send("Invalid tile ID");
   }
 
@@ -42,8 +38,6 @@ app.get("/api/tile-image/:id", (req, res) => {
       }
 
       if (!row) {
-        console.log(`Tile ID ${tileId} not found in database`);
-
         // Fall back to the old calculation method if not in database
         const adjustedTileId = parseInt(tileId) - 1;
         const imagePath = path.join(
@@ -54,7 +48,6 @@ app.get("/api/tile-image/:id", (req, res) => {
         );
 
         if (require("fs").existsSync(imagePath)) {
-          console.log(`Serving calculated tile image: ${imagePath}`);
           res.setHeader("Cache-Control", "public, max-age=86400");
           return res.sendFile(imagePath);
         }
@@ -75,20 +68,15 @@ app.get("/api/tile-image/:id", (req, res) => {
 
       // Get the image path from the database
       const dbImagePath = row.image_path;
-      console.log(`Database image path for tile ${tileId}: ${dbImagePath}`);
 
       // Convert the relative path to an absolute path
       const imagePath = path.join(__dirname, "..", dbImagePath);
-      console.log(`Absolute image path: ${imagePath}`);
 
       // Check if the file exists
       if (require("fs").existsSync(imagePath)) {
-        console.log(`Serving tile image from database path: ${imagePath}`);
         res.setHeader("Cache-Control", "public, max-age=86400");
         res.sendFile(imagePath);
       } else {
-        console.log(`Tile image not found at database path: ${imagePath}`);
-
         // Try the calculated path as a fallback
         const adjustedTileId = parseInt(tileId) - 1;
         const calculatedPath = path.join(
@@ -99,7 +87,6 @@ app.get("/api/tile-image/:id", (req, res) => {
         );
 
         if (require("fs").existsSync(calculatedPath)) {
-          console.log(`Serving calculated tile image: ${calculatedPath}`);
           res.setHeader("Cache-Control", "public, max-age=86400");
           return res.sendFile(calculatedPath);
         }
@@ -145,7 +132,7 @@ app.get("/api/tile-images", (req, res) => {
 app.get("/api/tiles/:zoneId", (req, res) => {
   const zoneId = req.params.zoneId;
   db.all(
-    "SELECT x, y, tile_image_id, local_x, local_y FROM tiles WHERE zone_id = ?",
+    "SELECT t.x, t.y, t.tile_image_id, t.local_x, t.local_y, t.zone_id, z.name as zone_name FROM tiles t JOIN zones z ON t.zone_id = z.id WHERE t.zone_id = ?",
     [zoneId],
     (err, rows) => {
       if (err) {

@@ -6,6 +6,7 @@ export class UiManager {
   private infoText: Phaser.GameObjects.Text;
   private modeText: Phaser.GameObjects.Text;
   private loadingText: Phaser.GameObjects.Text;
+  private padding = 10; // Padding between UI elements
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -19,6 +20,7 @@ export class UiManager {
       fontSize: "16px",
       color: "#ffffff",
       backgroundColor: "#000000",
+      padding: { x: 5, y: 5 },
     });
     this.infoText.setDepth(1000); // Ensure it's always on top
     this.infoText.setScrollFactor(0);
@@ -29,6 +31,7 @@ export class UiManager {
       fontSize: "16px",
       color: "#ffffff",
       backgroundColor: "#000000",
+      padding: { x: 5, y: 5 },
     });
     this.modeText.setDepth(1000); // Ensure it's always on top
     this.modeText.setScrollFactor(0);
@@ -38,9 +41,27 @@ export class UiManager {
       color: "#ffffff",
       fontSize: "18px",
       backgroundColor: "#000000",
+      padding: { x: 5, y: 5 },
     });
     this.loadingText.setScrollFactor(0);
     this.loadingText.setDepth(1000); // Ensure it's always on top
+
+    // Position elements correctly
+    this.updateElementPositions();
+  }
+
+  updateElementPositions() {
+    const infoTextHeight = this.infoText.height;
+    const modeTextHeight = this.modeText.height;
+
+    // Position modeText below infoText
+    this.modeText.setPosition(10, 10 + infoTextHeight + this.padding);
+
+    // Position loadingText below modeText
+    this.loadingText.setPosition(
+      10,
+      10 + infoTextHeight + this.padding + modeTextHeight + this.padding
+    );
   }
 
   updateTileInfo(
@@ -60,6 +81,7 @@ export class UiManager {
     // Check if we have zone info
     if (!zoneInfo) {
       this.infoText.setText("No zone info available");
+      this.updateElementPositions();
       return;
     }
 
@@ -68,36 +90,34 @@ export class UiManager {
 
     // In overworld mode, find the zone for this tile
     const tile = tiles.find((t) => t.x === tileX && t.y === tileY);
-    if (tile && tile.zone_id) {
-      // Try to find the zone name from another tile with the same zone_id
-      const zoneNameTile = tiles.find(
-        (t) => t.zone_id === tile.zone_id && t.zone_name
-      );
 
-      info += `\nZone ID: ${tile.zone_id}`;
-      if (zoneNameTile && zoneNameTile.zone_name) {
-        info += ` (${zoneNameTile.zone_name})`;
-      }
-
-      // Add local coordinates within the zone if available
-      if (tile.local_x !== undefined && tile.local_y !== undefined) {
-        info += `\nLocal Coords: (${tile.local_x}, ${tile.local_y})`;
-      }
+    // Always show local coordinates, displaying "none" when not available
+    if (tile && tile.local_x !== undefined && tile.local_y !== undefined) {
+      info += `\nLocal Coords: (${tile.local_x}, ${tile.local_y})`;
+    } else {
+      info += `\nLocal Coords: none`;
     }
-    info += `\nView: ${zoneInfo.name}`;
+
+    // Always show Zone ID, displaying "none" when not available
+    if (tile && tile.zone_id) {
+      info += `\nZone ID: ${tile.zone_id}`;
+
+      // Use zone_name directly from the tile object
+      if (tile.zone_name) {
+        info += ` (${tile.zone_name})`;
+      } else {
+        info += ` (no name)`;
+      }
+    } else {
+      info += `\nZone ID: none`;
+    }
 
     if (zoneInfo.tileset_id) {
       info += `\nTileset ID: ${zoneInfo.tileset_id}`;
     }
 
-    if (zoneInfo.is_overworld) {
-      info += `\nOverworld: Yes`;
-    }
-
-    // Find tile at this position
-    if (tile) {
-      info += `\nTile ID: ${tile.tile_image_id}`;
-    }
+    // Always display Tile ID, showing "n/a" when no tile is found
+    info += `\nTile ID: ${tile ? tile.tile_image_id : "none"}`;
 
     // Find item at this position
     const item = items.find((i) => i.x === tileX && i.y === tileY);
@@ -110,11 +130,18 @@ export class UiManager {
 
     // Update the info text
     this.infoText.setText(info);
+
+    // Update positions after text content changes
+    this.updateElementPositions();
+
+    // Update the mode text with the current view name
+    this.setModeText(`View: ${zoneInfo.name}`);
   }
 
   setLoadingText(text: string) {
     this.loadingText.setText(text);
     this.loadingText.setVisible(true);
+    this.updateElementPositions();
   }
 
   hideLoadingText() {
@@ -123,6 +150,7 @@ export class UiManager {
 
   setModeText(text: string) {
     this.modeText.setText(text);
+    this.updateElementPositions();
   }
 
   getUiElements() {
@@ -130,9 +158,10 @@ export class UiManager {
   }
 
   handleResize() {
-    // Ensure text elements stay in the correct position
+    // Reset the position of the top element
     this.infoText.setPosition(10, 10);
-    this.modeText.setPosition(10, 30);
-    this.loadingText.setPosition(10, 50);
+
+    // Update positions of other elements
+    this.updateElementPositions();
   }
 }
