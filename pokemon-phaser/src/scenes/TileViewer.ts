@@ -43,7 +43,7 @@ export class TileViewer extends Scene {
 
     // Bind event handlers to this instance
     this.handleTileUpdateBound = this.handleTileUpdate.bind(this);
-    this.handleConnectedBound = () => 
+    this.handleConnectedBound = () =>
       console.log("Connected to WebSocket server");
     this.handleDisconnectedBound = () => {};
   }
@@ -112,9 +112,6 @@ export class TileViewer extends Scene {
       this.preloadText.destroy();
     }
 
-    // Connect to WebSocket server
-    this.setupWebSocket();
-
     // Load map data after UI is initialized
     if (OVERWORLD_MODE) {
       this.loadOverworldData();
@@ -124,6 +121,9 @@ export class TileViewer extends Scene {
   }
 
   setupWebSocket() {
+    // Disconnect from any existing connection first
+    webSocketService.disconnect();
+
     // Connect to the WebSocket server
     webSocketService.connect();
 
@@ -226,6 +226,9 @@ export class TileViewer extends Scene {
 
       // Hide loading text
       this.uiManager.hideLoadingText();
+
+      // Connect to WebSocket server after all data is loaded
+      this.setupWebSocket();
     } catch (error: any) {
       console.error("Error loading map data:", error);
       this.uiManager.setLoadingText(
@@ -319,6 +322,9 @@ export class TileViewer extends Scene {
 
       // Hide loading text
       this.uiManager.hideLoadingText();
+
+      // Connect to WebSocket server after all data is loaded
+      this.setupWebSocket();
     } catch (error: any) {
       console.error("Error loading overworld data:", error);
       this.uiManager.setLoadingText(

@@ -218,7 +218,7 @@ app.get("/api/overworld-zones", (req, res) => {
 // WebSocket connection handler
 wss.on("connection", (ws, req) => {
   console.log("New client connected");
-  
+
   // Send initial connection message
   ws.send(
     JSON.stringify({ type: "connection", message: "Connected to server" })
@@ -228,7 +228,7 @@ wss.on("connection", (ws, req) => {
   ws.on("message", (message) => {
     try {
       const data = JSON.parse(message);
-      
+
       // Handle different message types if needed
       if (data.type === "subscribe") {
         // Client is subscribing to updates
