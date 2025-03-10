@@ -6,11 +6,13 @@ export class UiManager {
   private infoText: Phaser.GameObjects.Text;
   private modeText: Phaser.GameObjects.Text;
   private loadingText: Phaser.GameObjects.Text;
+  private tileHighlight: Phaser.GameObjects.Graphics;
   private padding = 10; // Padding between UI elements
 
   constructor(scene: Scene) {
     this.scene = scene;
     this.createUiElements();
+    this.createTileHighlight();
   }
 
   createUiElements() {
@@ -50,6 +52,11 @@ export class UiManager {
     this.updateElementPositions();
   }
 
+  createTileHighlight() {
+    this.tileHighlight = this.scene.add.graphics();
+    this.tileHighlight.setDepth(500); // Set depth to be above tiles but below UI
+  }
+
   updateElementPositions() {
     const infoTextHeight = this.infoText.height;
     const modeTextHeight = this.modeText.height;
@@ -77,6 +84,9 @@ export class UiManager {
     // Convert world coordinates to tile coordinates
     const tileX = Math.floor(worldPoint.x / TILE_SIZE);
     const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+
+    // Update the tile highlight position
+    this.updateTileHighlight(tileX, tileY);
 
     // Check if we have zone info
     if (!zoneInfo) {
@@ -136,6 +146,48 @@ export class UiManager {
 
     // Update the mode text with the current view name
     this.setModeText(`View: ${zoneInfo.name}`);
+  }
+
+  updateTileHighlight(tileX: number, tileY: number) {
+    // Clear previous highlight
+    this.tileHighlight.clear();
+    
+    const darkGrey = 0x444444;
+    const x = tileX * TILE_SIZE;
+    const y = tileY * TILE_SIZE;
+    const size = TILE_SIZE;
+    const bracketSize = 4; // Size of the corner brackets
+    
+    // Set line style
+    this.tileHighlight.lineStyle(1, darkGrey);
+    
+    // Draw top-left corner bracket
+    this.tileHighlight.beginPath();
+    this.tileHighlight.moveTo(x, y + bracketSize);
+    this.tileHighlight.lineTo(x, y);
+    this.tileHighlight.lineTo(x + bracketSize, y);
+    this.tileHighlight.strokePath();
+    
+    // Draw top-right corner bracket
+    this.tileHighlight.beginPath();
+    this.tileHighlight.moveTo(x + size - bracketSize, y);
+    this.tileHighlight.lineTo(x + size, y);
+    this.tileHighlight.lineTo(x + size, y + bracketSize);
+    this.tileHighlight.strokePath();
+    
+    // Draw bottom-right corner bracket
+    this.tileHighlight.beginPath();
+    this.tileHighlight.moveTo(x + size, y + size - bracketSize);
+    this.tileHighlight.lineTo(x + size, y + size);
+    this.tileHighlight.lineTo(x + size - bracketSize, y + size);
+    this.tileHighlight.strokePath();
+    
+    // Draw bottom-left corner bracket
+    this.tileHighlight.beginPath();
+    this.tileHighlight.moveTo(x + bracketSize, y + size);
+    this.tileHighlight.lineTo(x, y + size);
+    this.tileHighlight.lineTo(x, y + size - bracketSize);
+    this.tileHighlight.strokePath();
   }
 
   setLoadingText(text: string) {
