@@ -129,15 +129,19 @@ export class TileManager {
     for (let i = 1; i <= 10; i++) {
       this.scene.load.image(`tile-${i}`, getTileImageUrl(i));
     }
-    
+
     // Load the poke_ball image for items using the sprite API
     this.scene.load.image("item-marker", getSpriteUrl("poke_ball.png"));
-    
+
     // Create a fallback item marker in case the image fails to load
     const graphics = this.scene.make.graphics({ x: 0, y: 0 });
     graphics.fillStyle(0xff0000);
     graphics.fillCircle(TILE_SIZE / 4, TILE_SIZE / 4, TILE_SIZE / 4);
-    graphics.generateTexture("item-marker-fallback", TILE_SIZE / 2, TILE_SIZE / 2);
+    graphics.generateTexture(
+      "item-marker-fallback",
+      TILE_SIZE / 2,
+      TILE_SIZE / 2
+    );
     graphics.destroy();
   }
 

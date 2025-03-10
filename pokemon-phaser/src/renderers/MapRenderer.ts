@@ -47,8 +47,10 @@ export class MapRenderer {
     // Render items
     for (const item of items) {
       // Use the item-marker texture (poke_ball.png)
-      const textureKey = this.scene.textures.exists("item-marker") ? "item-marker" : "item-marker-fallback";
-      
+      const textureKey = this.scene.textures.exists("item-marker")
+        ? "item-marker"
+        : "item-marker-fallback";
+
       const itemSprite = this.scene.add.image(
         item.x * TILE_SIZE + TILE_SIZE / 2,
         item.y * TILE_SIZE + TILE_SIZE / 2,
@@ -62,7 +64,7 @@ export class MapRenderer {
         // Set an appropriate size for the poke_ball image
         itemSprite.setDisplaySize(TILE_SIZE * 0.75, TILE_SIZE * 0.75);
       }
-      
+
       // Store item data in the sprite for hover info
       (itemSprite as any).itemData = item;
 
