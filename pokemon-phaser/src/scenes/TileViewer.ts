@@ -33,6 +33,7 @@ export class TileViewer extends Scene {
     lastPointerPosition: { x: 0, y: 0 },
   };
   private zoomLevel: number = DEFAULT_ZOOM;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera; // UI camera for HUD elements
 
   // UI elements
   private infoText: Phaser.GameObjects.Text;
@@ -76,7 +77,7 @@ export class TileViewer extends Scene {
       fontSize: "18px",
       backgroundColor: "#000000",
     });
-    this.loadingText.setScrollFactor(0); // Fix to camera
+    this.loadingText.setScrollFactor(0);
     this.loadingText.setDepth(1000); // Ensure it's always on top
 
     // Set up scene cleanup
@@ -91,11 +92,11 @@ export class TileViewer extends Scene {
   }
 
   create() {
+    // Create a container for the map
+    this.mapContainer = this.add.container(0, 0);
+
     // Set up camera
     this.cameras.main.setBackgroundColor(0x000000);
-
-    // Create container for all map elements
-    this.mapContainer = this.add.container(0, 0);
 
     // Set up keyboard input
     if (this.input.keyboard) {
@@ -144,6 +145,17 @@ export class TileViewer extends Scene {
       }
     );
 
+    // Create a separate camera for UI elements that won't be affected by zoom
+    this.uiCamera = this.cameras.add(
+      0,
+      0,
+      this.cameras.main.width,
+      this.cameras.main.height
+    );
+    this.uiCamera.setScroll(0, 0);
+    this.uiCamera.transparent = true;
+    this.uiCamera.setName("UICamera");
+
     // Add info text for displaying tile information
     this.infoText = this.add.text(10, 10, "", {
       fontFamily: "Arial",
@@ -151,7 +163,6 @@ export class TileViewer extends Scene {
       color: "#ffffff",
       backgroundColor: "#000000",
     });
-    this.infoText.setScrollFactor(0); // Fix to camera
     this.infoText.setDepth(1000); // Ensure it's always on top
 
     // Add view mode indicator
@@ -161,8 +172,19 @@ export class TileViewer extends Scene {
       color: "#ffffff",
       backgroundColor: "#000000",
     });
-    this.modeText.setScrollFactor(0); // Fix to camera
     this.modeText.setDepth(1000); // Ensure it's always on top
+
+    // Set UI elements to use the UI camera
+    this.infoText.setScrollFactor(0);
+    this.modeText.setScrollFactor(0);
+    this.loadingText.setScrollFactor(0);
+
+    // Configure cameras to show the right elements
+    // Main camera should show the map container
+    this.cameras.main.ignore([this.infoText, this.modeText, this.loadingText]);
+
+    // UI camera should only show UI elements
+    this.uiCamera.ignore([this.mapContainer]);
 
     // Set up pointer move for tile info display
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
@@ -176,6 +198,9 @@ export class TileViewer extends Scene {
   }
 
   handleResize() {
+    // Resize the UI camera to match the main camera
+    this.uiCamera.setSize(this.cameras.main.width, this.cameras.main.height);
+
     // Ensure text elements stay in the correct position
     this.infoText.setPosition(10, 10);
     this.modeText.setPosition(10, 30);
@@ -377,30 +402,32 @@ export class TileViewer extends Scene {
       graphics.destroy();
     }
 
+    // Track which textures we need to load
+    const texturesToLoad = new Set<number>();
+
     // Process all tile images
     for (const tileImage of tileImagesData) {
       const tileKey = `tile-${tileImage.id}`;
 
       // Skip if we've already loaded this texture in preload
-      if (this.textures.exists(tileKey)) {
-        continue;
-      }
 
-      // Always use the API endpoint for consistent handling
-      const imgUrl = this.getTileImageUrl(tileImage.id);
-
-      // Load the image
-      this.load.image(tileKey, imgUrl);
+      // Add to the set of textures to load
+      texturesToLoad.add(tileImage.id);
 
       // Store the image path for later use
+      const imgUrl = this.getTileImageUrl(tileImage.id);
       this.tileImageCache.set(tileImage.id, {
         key: tileKey,
         path: imgUrl,
       });
     }
 
-    // Start the load
-    if (this.load.list.size > 0) {
+    // Load all textures in a single batch
+    if (texturesToLoad.size > 0) {
+      // Clear any previous listeners to avoid duplicates
+      this.load.off("loaderror");
+
+      // Set up error handling
       this.load.on("loaderror", (fileObj: any) => {
         // Handle loading errors by creating a fallback tile
         const tileId = fileObj.key.replace("tile-", "");
@@ -408,6 +435,16 @@ export class TileViewer extends Scene {
         this.createFallbackTile(fileObj.key, tileId);
       });
 
+      // Load all textures
+      for (const tileId of texturesToLoad) {
+        const tileKey = `tile-${tileId}`;
+        const imgUrl = this.getTileImageUrl(tileId);
+
+        // Load all textures
+        this.load.image(tileKey, imgUrl);
+      }
+
+      // Start the load
       await new Promise<void>((resolve) => {
         this.load.once("complete", () => {
           resolve();
@@ -455,6 +492,8 @@ export class TileViewer extends Scene {
 
       // Create tile sprite using the texture (either preloaded or fallback)
       const tileKey = `tile-${tile_image_id}`;
+
+      // Create the tile sprite normally
       const tileSprite = this.add.image(posX, posY, tileKey);
       tileSprite.setOrigin(0, 0);
       tileSprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
@@ -589,6 +628,9 @@ export class TileViewer extends Scene {
 
     // Remove resize event listener
     this.scale.off("resize", this.handleResize, this);
+
+    // Remove the UI camera
+    this.cameras.remove(this.uiCamera);
 
     // Clear all cached data
     this.tileImageCache.clear();

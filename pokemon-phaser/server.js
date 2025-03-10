@@ -12,48 +12,113 @@ app.use(cors());
 // Serve static files from the 'dist' directory
 app.use(express.static(path.join(__dirname, ".")));
 
-// Serve the root directory for direct access to files
-app.use(express.static(path.join(__dirname, "..")));
+// Remove direct access to parent directory
+// app.use(express.static(path.join(__dirname, "..")));
 
-// Serve tile images from the root directory
-app.use("/tile_images", express.static(path.join(__dirname, "../tile_images")));
+// Remove direct access to tile_images directory
+// app.use("/tile_images", express.static(path.join(__dirname, "../tile_images")));
 
 // Add a specific endpoint to get a tile image by ID
 app.get("/api/tile-image/:id", (req, res) => {
   const tileId = req.params.id;
 
+  // Add detailed logging for debugging
+  console.log(`Tile image request for ID: ${tileId}`);
+
   // Validate that tileId is a number
   if (isNaN(parseInt(tileId))) {
+    console.log(`Invalid tile ID: ${tileId}`);
     return res.status(400).send("Invalid tile ID");
   }
 
-  // The tile ID in the database is 1-indexed, but the image files are 0-indexed
-  const adjustedTileId = parseInt(tileId) - 1;
-  const imagePath = path.join(
-    __dirname,
-    "..",
-    "tile_images",
-    `tile_${adjustedTileId}.png`
-  );
+  // Get the image path from the database instead of calculating it
+  db.get(
+    "SELECT image_path FROM tile_images WHERE id = ?",
+    [tileId],
+    (err, row) => {
+      if (err) {
+        console.error(`Database error for tile ${tileId}:`, err);
+        return res.status(500).send("Database error");
+      }
 
-  // Check if the file exists
-  if (require("fs").existsSync(imagePath)) {
-    res.sendFile(imagePath);
-  } else {
-    console.log(`Tile image not found: ${imagePath}`);
-    // Send a fallback image or a 404 response
-    const fallbackPath = path.join(
-      __dirname,
-      "..",
-      "tile_images",
-      "tile_0.png"
-    );
-    if (require("fs").existsSync(fallbackPath)) {
-      res.sendFile(fallbackPath);
-    } else {
-      res.status(404).send("Tile image not found");
+      if (!row) {
+        console.log(`Tile ID ${tileId} not found in database`);
+
+        // Fall back to the old calculation method if not in database
+        const adjustedTileId = parseInt(tileId) - 1;
+        const imagePath = path.join(
+          __dirname,
+          "..",
+          "tile_images",
+          `tile_${adjustedTileId}.png`
+        );
+
+        if (require("fs").existsSync(imagePath)) {
+          console.log(`Serving calculated tile image: ${imagePath}`);
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          return res.sendFile(imagePath);
+        }
+
+        // If all else fails, send the fallback image
+        const fallbackPath = path.join(
+          __dirname,
+          "..",
+          "tile_images",
+          "tile_0.png"
+        );
+        if (require("fs").existsSync(fallbackPath)) {
+          return res.sendFile(fallbackPath);
+        } else {
+          return res.status(404).send("Tile image not found");
+        }
+      }
+
+      // Get the image path from the database
+      const dbImagePath = row.image_path;
+      console.log(`Database image path for tile ${tileId}: ${dbImagePath}`);
+
+      // Convert the relative path to an absolute path
+      const imagePath = path.join(__dirname, "..", dbImagePath);
+      console.log(`Absolute image path: ${imagePath}`);
+
+      // Check if the file exists
+      if (require("fs").existsSync(imagePath)) {
+        console.log(`Serving tile image from database path: ${imagePath}`);
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.sendFile(imagePath);
+      } else {
+        console.log(`Tile image not found at database path: ${imagePath}`);
+
+        // Try the calculated path as a fallback
+        const adjustedTileId = parseInt(tileId) - 1;
+        const calculatedPath = path.join(
+          __dirname,
+          "..",
+          "tile_images",
+          `tile_${adjustedTileId}.png`
+        );
+
+        if (require("fs").existsSync(calculatedPath)) {
+          console.log(`Serving calculated tile image: ${calculatedPath}`);
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          return res.sendFile(calculatedPath);
+        }
+
+        // If all else fails, send the fallback image
+        const fallbackPath = path.join(
+          __dirname,
+          "..",
+          "tile_images",
+          "tile_0.png"
+        );
+        if (require("fs").existsSync(fallbackPath)) {
+          return res.sendFile(fallbackPath);
+        } else {
+          return res.status(404).send("Tile image not found");
+        }
+      }
     }
-  }
+  );
 });
 
 // Connect to the SQLite database
