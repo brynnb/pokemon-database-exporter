@@ -112,6 +112,27 @@ app.get("/api/tile-image/:id", (req, res) => {
   );
 });
 
+// Add an endpoint to serve sprite images
+app.get("/api/sprite/:name", (req, res) => {
+  const spriteName = req.params.name;
+
+  // Validate the sprite name to prevent directory traversal
+  if (!spriteName || spriteName.includes("..") || spriteName.includes("/")) {
+    return res.status(400).send("Invalid sprite name");
+  }
+
+  // Construct the path to the sprite
+  const spritePath = path.join(__dirname, "..", "sprites", spriteName);
+
+  // Check if the file exists
+  if (require("fs").existsSync(spritePath)) {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.sendFile(spritePath);
+  } else {
+    return res.status(404).send("Sprite not found");
+  }
+});
+
 // Connect to the SQLite database
 const db = new sqlite3.Database("../pokemon.db", (err) => {
   if (err) {

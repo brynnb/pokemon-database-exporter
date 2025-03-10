@@ -61,6 +61,13 @@ export class TileViewer extends Scene {
     // Initialize the tile manager
     this.tileManager = new TileManager(this);
 
+    // Add error handler for the item-marker (poke_ball) image
+    this.load.on("loaderror", (fileObj: any) => {
+      if (fileObj.key === "item-marker") {
+        console.warn("Failed to load poke_ball.png, using fallback");
+      }
+    });
+
     // Preload common tiles
     this.tileManager.preloadCommonTiles();
   }
