@@ -1,5 +1,6 @@
 import {
   fetchItems,
+  fetchNPCs,
   fetchOverworldZones,
   fetchTileImages,
   fetchTiles,
@@ -21,6 +22,10 @@ export class MapDataService {
 
   async fetchItems() {
     return await fetchItems();
+  }
+
+  async fetchNPCs() {
+    return await fetchNPCs();
   }
 
   async fetchTileImages() {

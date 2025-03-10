@@ -65,6 +65,33 @@ export class MapRenderer {
     return this.calculateMapBounds(tiles);
   }
 
+  updateTile(x: number, y: number, newTileImageId: number): boolean {
+    // Get the tile sprite at the specified position
+    const tileSprite = this.tileImages.get(x * 1000 + y);
+
+    if (!tileSprite) {
+      console.warn(`No tile found at position (${x}, ${y})`);
+      return false;
+    }
+
+    // Get the new texture key
+    const newTileKey = `tile-${newTileImageId}`;
+
+    // Check if the texture exists
+    if (!this.scene.textures.exists(newTileKey)) {
+      console.warn(`Texture ${newTileKey} does not exist`);
+      return false;
+    }
+
+    // Update the texture
+    tileSprite.setTexture(newTileKey);
+
+    // Update the stored tile image ID
+    (tileSprite as any).tileImageId = newTileImageId;
+
+    return true;
+  }
+
   calculateMapBounds(tiles: any[]) {
     if (tiles.length === 0) {
       return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };

@@ -6,6 +6,10 @@ import { MapRenderer } from "../renderers/MapRenderer";
 import { MapDataService } from "../services/MapDataService";
 import { TileManager } from "../managers/TileManager";
 import { UiManager } from "../managers/UiManager";
+import {
+  TileUpdateEvent,
+  webSocketService,
+} from "../services/WebSocketService";
 
 export class TileViewer extends Scene {
   // Services and managers
@@ -28,9 +32,20 @@ export class TileViewer extends Scene {
   // Loading text for preload phase
   private preloadText: Phaser.GameObjects.Text;
 
+  // Event handlers
+  private handleTileUpdateBound: (event: TileUpdateEvent) => void;
+  private handleConnectedBound: () => void;
+  private handleDisconnectedBound: () => void;
+
   constructor() {
     super("TileViewer");
     this.mapDataService = new MapDataService();
+
+    // Bind event handlers to this instance
+    this.handleTileUpdateBound = this.handleTileUpdate.bind(this);
+    this.handleConnectedBound = () => 
+      console.log("Connected to WebSocket server");
+    this.handleDisconnectedBound = () => {};
   }
 
   preload() {
@@ -97,11 +112,42 @@ export class TileViewer extends Scene {
       this.preloadText.destroy();
     }
 
+    // Connect to WebSocket server
+    this.setupWebSocket();
+
     // Load map data after UI is initialized
     if (OVERWORLD_MODE) {
       this.loadOverworldData();
     } else {
       this.loadMapData(DEFAULT_ZONE_ID);
+    }
+  }
+
+  setupWebSocket() {
+    // Connect to the WebSocket server
+    webSocketService.connect();
+
+    // Listen for tile updates
+    webSocketService.on("tileUpdate", this.handleTileUpdateBound);
+
+    // Handle connection events if needed
+    webSocketService.on("connected", this.handleConnectedBound);
+    webSocketService.on("disconnected", this.handleDisconnectedBound);
+  }
+
+  handleTileUpdate(event: TileUpdateEvent) {
+    // Find the tile in our local data
+    const tileIndex = this.tiles.findIndex((tile) => tile.id === event.tileId);
+
+    if (tileIndex !== -1) {
+      // Update the tile image ID in our local data
+      this.tiles[tileIndex].tile_image_id = event.newTileImageId;
+
+      // Get the tile's position
+      const tile = this.tiles[tileIndex];
+
+      // Update the tile sprite in the renderer
+      this.mapRenderer.updateTile(tile.x, tile.y, event.newTileImageId);
     }
   }
 
@@ -152,7 +198,6 @@ export class TileViewer extends Scene {
         if (Array.isArray(allItems)) {
           this.items = allItems.filter((item: any) => item.zone_id === zoneId);
         } else {
-          console.warn("Items data is not an array:", allItems);
           this.items = [];
         }
       } catch (itemError) {
@@ -241,12 +286,21 @@ export class TileViewer extends Scene {
         if (Array.isArray(allItems)) {
           this.items = allItems;
         } else {
-          console.warn("Items data is not an array:", allItems);
           this.items = [];
         }
       } catch (itemError) {
         console.error("Error loading items:", itemError);
         this.items = [];
+      }
+
+      this.uiManager.setLoadingText("Loading NPCs...");
+
+      try {
+        // Fetch all NPCs
+        this.npcs = await this.mapDataService.fetchNPCs();
+      } catch (npcError) {
+        console.error("Error loading NPCs:", npcError);
+        this.npcs = [];
       }
 
       // Render the map
@@ -256,6 +310,9 @@ export class TileViewer extends Scene {
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
       }
+
+      // Create a legend for the zones
+      this.createZoneLegend(overworldZones);
 
       // Update mode text
       this.uiManager.setModeText("Overworld View");
@@ -272,21 +329,30 @@ export class TileViewer extends Scene {
     }
   }
 
-  // Clean up resources when the scene is shut down
+  createZoneLegend(zones: any[]) {
+    // Implementation of zone legend creation
+    // This is a placeholder for the actual implementation
+  }
+
   cleanupResources() {
-    // Remove resize event listener
+    // Disconnect from WebSocket server
+    webSocketService.disconnect();
+
+    // Clean up event listeners
+    webSocketService.off("tileUpdate", this.handleTileUpdateBound);
+    webSocketService.off("connected", this.handleConnectedBound);
+    webSocketService.off("disconnected", this.handleDisconnectedBound);
+
+    // Clean up other resources
+    if (this.mapRenderer) {
+      this.mapRenderer.clear();
+    }
+
+    if (this.tileManager) {
+      this.tileManager.clearCache();
+    }
+
+    // Remove resize listener
     this.scale.off("resize", this.handleResize, this);
-
-    // Clean up camera controller
-    this.cameraController.cleanup();
-
-    // Clear all cached data
-    this.tileManager.clearCache();
-    this.tiles = [];
-    this.items = [];
-    this.npcs = [];
-
-    // Clear the map renderer
-    this.mapRenderer.clear();
   }
 }

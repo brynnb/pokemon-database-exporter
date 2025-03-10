@@ -2,9 +2,13 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const path = require("path");
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 // Enable CORS for all routes
 app.use(cors());
@@ -112,8 +116,6 @@ app.get("/api/tile-image/:id", (req, res) => {
 const db = new sqlite3.Database("../pokemon.db", (err) => {
   if (err) {
     console.error("Error connecting to the database:", err.message);
-  } else {
-    console.log("Connected to the SQLite database.");
   }
 });
 
@@ -132,7 +134,7 @@ app.get("/api/tile-images", (req, res) => {
 app.get("/api/tiles/:zoneId", (req, res) => {
   const zoneId = req.params.zoneId;
   db.all(
-    "SELECT t.x, t.y, t.tile_image_id, t.local_x, t.local_y, t.zone_id, z.name as zone_name FROM tiles t JOIN zones z ON t.zone_id = z.id WHERE t.zone_id = ?",
+    "SELECT t.id, t.x, t.y, t.tile_image_id, t.local_x, t.local_y, t.zone_id, z.name as zone_name FROM tiles t JOIN zones z ON t.zone_id = z.id WHERE t.zone_id = ?",
     [zoneId],
     (err, rows) => {
       if (err) {
@@ -182,13 +184,14 @@ app.get("/api/items", (req, res) => {
 // API endpoint to get NPCs
 app.get("/api/npcs", (req, res) => {
   db.all(
-    `SELECT n.id, n.x, n.y, n.zone_id, n.sprite_id, n.name 
-     FROM npcs n
-     JOIN zones z ON n.zone_id = z.id
-     WHERE z.is_overworld = 1`,
+    `SELECT o.id, o.x, o.y, o.zone_id, o.spriteset_id as sprite_id, o.name 
+     FROM objects o
+     JOIN zones z ON o.zone_id = z.id
+     WHERE o.object_type = 'npc' AND z.is_overworld = 1`,
     [],
     (err, rows) => {
       if (err) {
+        console.error("Error fetching NPCs:", err);
         res.status(500).json({ error: err.message });
         return;
       }
@@ -212,13 +215,75 @@ app.get("/api/overworld-zones", (req, res) => {
   );
 });
 
+// WebSocket connection handler
+wss.on("connection", (ws, req) => {
+  console.log("New client connected");
+  
+  // Send initial connection message
+  ws.send(
+    JSON.stringify({ type: "connection", message: "Connected to server" })
+  );
+
+  // Handle client messages
+  ws.on("message", (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      // Handle different message types if needed
+      if (data.type === "subscribe") {
+        // Client is subscribing to updates
+        ws.send(
+          JSON.stringify({
+            type: "subscribed",
+            message: "Subscribed to tile updates",
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Error processing message:", error);
+    }
+  });
+});
+
+// Set up the tile alternating test
+let currentTileImageId = 19;
+setInterval(() => {
+  // Toggle between tile image 19 and 20
+  currentTileImageId = currentTileImageId === 19 ? 20 : 19;
+
+  // Update the tile in the database
+  db.run(
+    "UPDATE tiles SET tile_image_id = ? WHERE id = 341",
+    [currentTileImageId],
+    (err) => {
+      if (err) {
+        console.error("Error updating tile:", err);
+        return;
+      }
+
+      // Broadcast the update to all connected clients
+      const updateMessage = JSON.stringify({
+        type: "tileUpdate",
+        tileId: 341,
+        newTileImageId: currentTileImageId,
+      });
+
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(updateMessage);
+        }
+      });
+    }
+  );
+}, 1000);
+
 // Catch-all route to serve the main index.html for client-side routing
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 // Start the server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
@@ -227,8 +292,6 @@ process.on("SIGINT", () => {
   db.close((err) => {
     if (err) {
       console.error("Error closing the database:", err.message);
-    } else {
-      console.log("Database connection closed.");
     }
     process.exit(0);
   });
