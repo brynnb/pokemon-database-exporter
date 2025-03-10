@@ -1,4 +1,13 @@
 import { Scene } from "phaser";
+import {
+  TileImageCacheEntry,
+  fetchItems,
+  fetchOverworldZones,
+  fetchTileImages,
+  fetchTiles,
+  fetchZoneInfo,
+  getTileImageUrl,
+} from "../api";
 
 // Constants
 const TILE_SIZE = 16; // Size of each tile in pixels
@@ -7,14 +16,7 @@ const MAX_ZOOM = 5.0; // Maximum zoom level
 const DEFAULT_ZOOM = 0.5; // Default zoom level
 const ZOOM_STEP = 0.025; // How much to zoom in/out per scroll
 const DEFAULT_ZONE_ID = 15; // Default zone ID to display
-const API_BASE_URL = "http://localhost:3000/api"; // Base URL for our API
 const OVERWORLD_MODE = true; // Always show overworld by default
-
-// Define an interface for our cached image data
-interface TileImageCacheEntry {
-  key: string;
-  path: string;
-}
 
 export class TileViewer extends Scene {
   // Map properties
@@ -68,7 +70,7 @@ export class TileViewer extends Scene {
 
     // Preload some common tile images using the API endpoint
     for (let i = 1; i <= 10; i++) {
-      this.load.image(`tile-${i}`, this.getTileImageUrl(i));
+      this.load.image(`tile-${i}`, getTileImageUrl(i));
     }
 
     // Add loading text
@@ -233,10 +235,7 @@ export class TileViewer extends Scene {
       this.loadingText.setText("Loading zone info...");
 
       // Fetch zone info
-      const zoneInfoResponse = await fetch(
-        `${API_BASE_URL}/zone-info/${zoneId}`
-      );
-      this.zoneInfo = await zoneInfoResponse.json();
+      this.zoneInfo = await fetchZoneInfo(zoneId);
 
       if (!this.zoneInfo) {
         throw new Error(`Zone ${zoneId} not found`);
@@ -245,14 +244,12 @@ export class TileViewer extends Scene {
       this.loadingText.setText("Loading tiles...");
 
       // Fetch tiles
-      const tilesResponse = await fetch(`${API_BASE_URL}/tiles/${zoneId}`);
-      this.tiles = await tilesResponse.json();
+      this.tiles = await fetchTiles(zoneId);
 
       this.loadingText.setText("Loading tile images...");
 
       // Fetch tile images
-      const tileImagesResponse = await fetch(`${API_BASE_URL}/tile-images`);
-      const tileImagesData = await tileImagesResponse.json();
+      const tileImagesData = await fetchTileImages();
 
       // Load tile images
       await this.loadTileImages(tileImagesData);
@@ -261,8 +258,7 @@ export class TileViewer extends Scene {
 
       try {
         // Fetch items
-        const itemsResponse = await fetch(`${API_BASE_URL}/items`);
-        const allItems = await itemsResponse.json();
+        const allItems = await fetchItems();
 
         // Filter items for this zone
         if (Array.isArray(allItems)) {
@@ -309,10 +305,7 @@ export class TileViewer extends Scene {
       this.loadingText.setText("Loading overworld data...");
 
       // Get all overworld zones
-      const overworldZonesResponse = await fetch(
-        `${API_BASE_URL}/overworld-zones`
-      );
-      const overworldZones = await overworldZonesResponse.json();
+      const overworldZones = await fetchOverworldZones();
 
       // Create a combined zone info object for all overworld zones
       this.zoneInfo = {
@@ -325,8 +318,7 @@ export class TileViewer extends Scene {
       // Load tiles from all overworld zones
       this.tiles = [];
       for (const zone of overworldZones) {
-        const tilesResponse = await fetch(`${API_BASE_URL}/tiles/${zone.id}`);
-        const zoneTiles = await tilesResponse.json();
+        const zoneTiles = await fetchTiles(zone.id);
 
         // Add these tiles to our collection
         if (Array.isArray(zoneTiles)) {
@@ -342,8 +334,7 @@ export class TileViewer extends Scene {
       this.loadingText.setText("Loading tile images...");
 
       // Fetch tile images
-      const tileImagesResponse = await fetch(`${API_BASE_URL}/tile-images`);
-      const tileImagesData = await tileImagesResponse.json();
+      const tileImagesData = await fetchTileImages();
 
       // Load tile images
       await this.loadTileImages(tileImagesData);
@@ -352,8 +343,7 @@ export class TileViewer extends Scene {
 
       try {
         // Fetch all items
-        const itemsResponse = await fetch(`${API_BASE_URL}/items`);
-        const allItems = await itemsResponse.json();
+        const allItems = await fetchItems();
 
         // Use all items for overworld mode
         if (Array.isArray(allItems)) {
@@ -385,11 +375,6 @@ export class TileViewer extends Scene {
     }
   }
 
-  // Helper method to get the tile image URL
-  getTileImageUrl(tileId: number): string {
-    return `${API_BASE_URL}/tile-image/${tileId}`;
-  }
-
   async loadTileImages(tileImagesData: any[]) {
     // Create a fallback texture for missing tiles
     if (!this.textures.exists("missing-tile")) {
@@ -415,7 +400,7 @@ export class TileViewer extends Scene {
       texturesToLoad.add(tileImage.id);
 
       // Store the image path for later use
-      const imgUrl = this.getTileImageUrl(tileImage.id);
+      const imgUrl = getTileImageUrl(tileImage.id);
       this.tileImageCache.set(tileImage.id, {
         key: tileKey,
         path: imgUrl,
@@ -438,7 +423,7 @@ export class TileViewer extends Scene {
       // Load all textures
       for (const tileId of texturesToLoad) {
         const tileKey = `tile-${tileId}`;
-        const imgUrl = this.getTileImageUrl(tileId);
+        const imgUrl = getTileImageUrl(tileId);
 
         // Load all textures
         this.load.image(tileKey, imgUrl);
