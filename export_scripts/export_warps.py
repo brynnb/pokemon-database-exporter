@@ -29,7 +29,7 @@ ROUTES = [f"Route{i}" for i in range(1, 26)]
 
 
 def create_database():
-    """Create SQLite database and warps table"""
+    """Connect to SQLite database and create warps table if it doesn't exist"""
     conn = sqlite3.connect("pokemon.db")
     cursor = conn.cursor()
 
@@ -46,6 +46,8 @@ def create_database():
         source_zone_id INTEGER,
         source_x INTEGER NOT NULL,
         source_y INTEGER NOT NULL,
+        x INTEGER,
+        y INTEGER,
         destination_map TEXT NOT NULL,
         destination_map_id INTEGER,
         destination_zone_id INTEGER,
@@ -416,12 +418,16 @@ def main():
     # Create database
     conn, cursor = create_database()
 
-    # Get map name formats from maps table
+    # Get map formats from maps table
     map_formats = {}
-    cursor.execute("SELECT id, name FROM maps")
-    for map_id, map_name in cursor.fetchall():
-        # Store the UPPER_CASE format
-        map_formats[map_name] = map_id
+    try:
+        cursor.execute("SELECT id, name FROM maps")
+        for map_id, map_name in cursor.fetchall():
+            # Store the UPPER_CASE format
+            map_formats[map_name] = map_id
+    except sqlite3.OperationalError:
+        # If maps table doesn't exist, continue without it
+        print("Warning: 'maps' table not found, continuing without map formats")
 
     # Create a map name to zone ID mapping
     map_to_zone_id = {}
@@ -488,13 +494,24 @@ def main():
     # Insert warps into database
     inserted_count = 0
     for warp in resolved_warps:
+        # Calculate global coordinates for overworld warps
+        x = None
+        y = None
+        if warp["source_zone_id"]:
+            # Get the global coordinates of the zone (top-left corner)
+            zone_x, zone_y = get_zone_global_coordinates(cursor, warp["source_zone_id"])
+            if zone_x is not None and zone_y is not None:
+                # Apply the zone offset to the warp coordinates
+                x = zone_x + warp["source_x"]
+                y = zone_y + warp["source_y"]
+        
         cursor.execute(
             """
             INSERT INTO warps (
                 source_map, source_map_id, source_zone_id, source_x, source_y,
-                destination_map, destination_map_id, destination_zone_id, 
+                x, y, destination_map, destination_map_id, destination_zone_id, 
                 destination_x, destination_y, destination_warp_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 warp["source_map"],
@@ -502,6 +519,8 @@ def main():
                 warp["source_zone_id"],
                 warp["source_x"],
                 warp["source_y"],
+                x,
+                y,
                 warp["destination_map"],
                 warp["destination_map_id"],
                 warp["destination_zone_id"],
@@ -557,6 +576,25 @@ def convert_map_name_to_constant(map_name):
         ["_" + c if c.isupper() and i > 0 else c for i, c in enumerate(map_name)]
     )
     return constant.upper()
+
+
+def get_zone_global_coordinates(cursor, zone_id):
+    """Get the global coordinates of a zone (top-left corner)"""
+    if not zone_id:
+        return None, None
+
+    cursor.execute(
+        """
+        SELECT MIN(x), MIN(y) 
+        FROM tiles 
+        WHERE zone_id = ?
+        """,
+        (zone_id,),
+    )
+    result = cursor.fetchone()
+    if result:
+        return result[0], result[1]
+    return None, None
 
 
 if __name__ == "__main__":
