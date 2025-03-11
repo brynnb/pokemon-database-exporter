@@ -12,7 +12,7 @@ export class MapRenderer {
     this.mapContainer = mapContainer;
   }
 
-  renderMap(tiles: any[], items: any[]) {
+  renderMap(tiles: any[], items: any[], warps: any[] = []) {
     // Clear existing map
     this.mapContainer.removeAll();
     this.tileImages.clear();
@@ -70,6 +70,25 @@ export class MapRenderer {
 
       // Add to container
       this.mapContainer.add(itemSprite);
+    }
+
+    // Render warps
+    for (const warp of warps) {
+      // Create a transparent red square for each warp
+      const warpGraphics = this.scene.add.graphics();
+      warpGraphics.fillStyle(0xff0000, 0.5); // Red with 50% transparency
+      warpGraphics.fillRect(
+        warp.x * TILE_SIZE,
+        warp.y * TILE_SIZE,
+        TILE_SIZE,
+        TILE_SIZE
+      );
+
+      // Store warp data in the graphics object for hover info
+      (warpGraphics as any).warpData = warp;
+
+      // Add to container
+      this.mapContainer.add(warpGraphics);
     }
 
     return this.calculateMapBounds(tiles);

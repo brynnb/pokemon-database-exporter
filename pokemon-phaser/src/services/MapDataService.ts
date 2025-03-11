@@ -4,6 +4,7 @@ import {
   fetchOverworldZones,
   fetchTileImages,
   fetchTiles,
+  fetchWarps,
   fetchZoneInfo,
 } from "../api";
 
@@ -26,6 +27,10 @@ export class MapDataService {
 
   async fetchNPCs() {
     return await fetchNPCs();
+  }
+
+  async fetchWarps() {
+    return await fetchWarps();
   }
 
   async fetchTileImages() {

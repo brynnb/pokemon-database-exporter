@@ -76,7 +76,8 @@ export class UiManager {
     tiles: any[],
     items: any[],
     zoneInfo: any,
-    getWorldPoint: (x: number, y: number) => Phaser.Math.Vector2
+    getWorldPoint: (x: number, y: number) => Phaser.Math.Vector2,
+    warps: any[] = []
   ) {
     // Convert screen coordinates to world coordinates
     const worldPoint = getWorldPoint(pointer.x, pointer.y);
@@ -136,6 +137,13 @@ export class UiManager {
       if (item.description) {
         info += `\nDescription: ${item.description}`;
       }
+    }
+
+    // Find warp at this position
+    const warp = warps.find((w) => w.x === tileX && w.y === tileY);
+    if (warp) {
+      info += `\nWarp: (${warp.x}, ${warp.y})`;
+      info += `\nDestination: Zone ${warp.destination_zone_id} at (${warp.destination_x}, ${warp.destination_y})`;
     }
 
     // Update the info text

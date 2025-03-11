@@ -212,7 +212,6 @@ app.get("/api/npcs", (req, res) => {
     [],
     (err, rows) => {
       if (err) {
-        console.error("Error fetching NPCs:", err);
         res.status(500).json({ error: err.message });
         return;
       }
@@ -225,6 +224,23 @@ app.get("/api/npcs", (req, res) => {
 app.get("/api/overworld-zones", (req, res) => {
   db.all(
     "SELECT id, name FROM zones WHERE is_overworld = 1",
+    [],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// API endpoint to get warps
+app.get("/api/warps", (req, res) => {
+  db.all(
+    `SELECT id, source_zone_id as zone_id, source_x as x, source_y as y, 
+            destination_zone_id, destination_x, destination_y
+     FROM warps`,
     [],
     (err, rows) => {
       if (err) {

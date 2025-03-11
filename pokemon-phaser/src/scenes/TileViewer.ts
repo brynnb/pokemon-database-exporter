@@ -24,6 +24,7 @@ export class TileViewer extends Scene {
   private zoneInfo: any = null;
   private items: any[] = [];
   private npcs: any[] = [];
+  private warps: any[] = [];
 
   // Phaser elements
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -95,15 +96,16 @@ export class TileViewer extends Scene {
       this.mapContainer
     );
 
-    // Set up pointer move for tile info display
+    // Handle pointer move for tile info
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      if (!this.cameraController.isDragging()) {
+      if (this.zoneInfo) {
         this.uiManager.updateTileInfo(
           pointer,
           this.tiles,
           this.items,
           this.zoneInfo,
-          (x, y) => this.cameraController.getWorldPoint(x, y)
+          (x, y) => this.cameraController.getWorldPoint(x, y),
+          this.warps
         );
       }
     });
@@ -212,8 +214,29 @@ export class TileViewer extends Scene {
         this.items = [];
       }
 
+      this.uiManager.setLoadingText("Loading warps...");
+
+      try {
+        // Fetch warps
+        const allWarps = await this.mapDataService.fetchWarps();
+
+        // Filter warps for this zone
+        if (Array.isArray(allWarps)) {
+          this.warps = allWarps.filter((warp: any) => warp.zone_id === zoneId);
+        } else {
+          this.warps = [];
+        }
+      } catch (warpError) {
+        console.error("Error loading warps:", warpError);
+        this.warps = [];
+      }
+
       // Render the map
-      const mapBounds = this.mapRenderer.renderMap(this.tiles, this.items);
+      const mapBounds = this.mapRenderer.renderMap(
+        this.tiles,
+        this.items,
+        this.warps
+      );
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
@@ -313,8 +336,22 @@ export class TileViewer extends Scene {
         this.npcs = [];
       }
 
+      this.uiManager.setLoadingText("Loading warps...");
+
+      try {
+        // Fetch all warps
+        this.warps = await this.mapDataService.fetchWarps();
+      } catch (warpError) {
+        console.error("Error loading warps:", warpError);
+        this.warps = [];
+      }
+
       // Render the map
-      const mapBounds = this.mapRenderer.renderMap(this.tiles, this.items);
+      const mapBounds = this.mapRenderer.renderMap(
+        this.tiles,
+        this.items,
+        this.warps
+      );
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
