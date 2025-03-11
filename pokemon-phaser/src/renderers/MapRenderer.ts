@@ -13,9 +13,12 @@ export class MapRenderer {
   }
 
   renderMap(tiles: any[], items: any[], warps: any[] = []) {
-    // Clear existing map
-    this.mapContainer.removeAll();
-    this.tileImages.clear();
+    console.log(
+      `Rendering map with ${tiles.length} tiles, ${items.length} items, ${warps.length} warps`
+    );
+
+    // Clear existing map - ensure proper cleanup
+    this.clear();
 
     // Render each tile
     for (const tile of tiles) {
@@ -75,17 +78,45 @@ export class MapRenderer {
     // Render warps
     for (const warp of warps) {
       // Create a transparent red square for each warp
-      const warpGraphics = this.scene.add.graphics();
-      warpGraphics.fillStyle(0xff0000, 0.5); // Red with 50% transparency
-      warpGraphics.fillRect(
-        warp.x * TILE_SIZE,
-        warp.y * TILE_SIZE,
+      const warpGraphics = this.scene.add.rectangle(
+        warp.x * TILE_SIZE + TILE_SIZE / 2,
+        warp.y * TILE_SIZE + TILE_SIZE / 2,
         TILE_SIZE,
-        TILE_SIZE
+        TILE_SIZE,
+        0xff0000,
+        0.5
       );
 
       // Store warp data in the graphics object for hover info
       (warpGraphics as any).warpData = warp;
+
+      // Make the warp interactive
+      warpGraphics.setInteractive();
+
+      // Add a pointer cursor on hover
+      warpGraphics.on("pointerover", () => {
+        this.scene.input.setDefaultCursor("pointer");
+      });
+
+      warpGraphics.on("pointerout", () => {
+        this.scene.input.setDefaultCursor("default");
+      });
+
+      // Emit an event when the warp is clicked
+      warpGraphics.on("pointerdown", () => {
+        // Add a visual effect when clicking
+        const flashEffect = this.scene.tweens.add({
+          targets: warpGraphics,
+          alpha: { from: 0.5, to: 1 },
+          duration: 150,
+          yoyo: true,
+          repeat: 2,
+          onComplete: () => {
+            // Emit the warp clicked event after the effect completes
+            this.scene.events.emit("warpClicked", warp);
+          },
+        });
+      });
 
       // Add to container
       this.mapContainer.add(warpGraphics);
@@ -159,7 +190,25 @@ export class MapRenderer {
   }
 
   clear() {
-    this.mapContainer.removeAll();
-    this.tileImages.clear();
+    console.log("Clearing map renderer");
+
+    try {
+      // Destroy all children to ensure proper cleanup
+      if (this.mapContainer) {
+        this.mapContainer.each((child: Phaser.GameObjects.GameObject) => {
+          if (child) {
+            child.destroy();
+          }
+        });
+
+        // Remove all children from the container
+        this.mapContainer.removeAll(true);
+      }
+
+      // Clear the tile images map
+      this.tileImages.clear();
+    } catch (error) {
+      console.error("Error clearing map renderer:", error);
+    }
   }
 }

@@ -7,12 +7,37 @@ export class UiManager {
   private modeText: Phaser.GameObjects.Text;
   private loadingText: Phaser.GameObjects.Text;
   private tileHighlight: Phaser.GameObjects.Graphics;
+  private backToOverworldButton: Phaser.GameObjects.Container;
   private padding = 10; // Padding between UI elements
 
   constructor(scene: Scene) {
     this.scene = scene;
+
+    // Check for existing UI elements and destroy them
+    this.cleanupExistingUi();
+
     this.createUiElements();
     this.createTileHighlight();
+    this.createBackToOverworldButton();
+  }
+
+  cleanupExistingUi() {
+    // Check for existing UI elements by name
+    const uiElementNames = [
+      "infoText",
+      "modeText",
+      "loadingText",
+      "tileHighlight",
+      "backToOverworldButton",
+    ];
+
+    for (const name of uiElementNames) {
+      const existingElement = this.scene.children.getByName(name);
+      if (existingElement) {
+        console.log(`Found existing UI element: ${name}, destroying it`);
+        existingElement.destroy();
+      }
+    }
   }
 
   createUiElements() {
@@ -26,6 +51,7 @@ export class UiManager {
     });
     this.infoText.setDepth(1000); // Ensure it's always on top
     this.infoText.setScrollFactor(0);
+    this.infoText.name = "infoText";
 
     // Add view mode indicator
     this.modeText = this.scene.add.text(10, 30, "Overworld View", {
@@ -37,6 +63,7 @@ export class UiManager {
     });
     this.modeText.setDepth(1000); // Ensure it's always on top
     this.modeText.setScrollFactor(0);
+    this.modeText.name = "modeText";
 
     // Add loading text
     this.loadingText = this.scene.add.text(10, 50, "Loading map data...", {
@@ -47,6 +74,7 @@ export class UiManager {
     });
     this.loadingText.setScrollFactor(0);
     this.loadingText.setDepth(1000); // Ensure it's always on top
+    this.loadingText.name = "loadingText";
 
     // Position elements correctly
     this.updateElementPositions();
@@ -55,6 +83,7 @@ export class UiManager {
   createTileHighlight() {
     this.tileHighlight = this.scene.add.graphics();
     this.tileHighlight.setDepth(500); // Set depth to be above tiles but below UI
+    this.tileHighlight.name = "tileHighlight";
   }
 
   updateElementPositions() {
@@ -214,7 +243,12 @@ export class UiManager {
   }
 
   getUiElements() {
-    return [this.infoText, this.modeText, this.loadingText];
+    return [
+      this.infoText,
+      this.modeText,
+      this.loadingText,
+      this.backToOverworldButton,
+    ];
   }
 
   handleResize() {
@@ -223,5 +257,84 @@ export class UiManager {
 
     // Update positions of other elements
     this.updateElementPositions();
+
+    // Reposition the back to overworld button
+    if (this.backToOverworldButton) {
+      const { width } = this.scene.scale;
+      const buttonWidth = 180;
+      const buttonHeight = 40;
+      this.backToOverworldButton.setPosition(
+        width - buttonWidth / 2 - this.padding,
+        buttonHeight / 2 + this.padding
+      );
+    }
+  }
+
+  createBackToOverworldButton() {
+    // Create a container for the button
+    this.backToOverworldButton = this.scene.add.container(0, 0);
+    this.backToOverworldButton.setDepth(1000);
+    this.backToOverworldButton.setScrollFactor(0);
+    this.backToOverworldButton.name = "backToOverworldButton";
+
+    // Create button background
+    const buttonWidth = 180;
+    const buttonHeight = 40;
+    const buttonBackground = this.scene.add.rectangle(
+      0,
+      0,
+      buttonWidth,
+      buttonHeight,
+      0x333333
+    );
+    buttonBackground.setStrokeStyle(2, 0xffffff);
+
+    // Create button text
+    const buttonText = this.scene.add.text(0, 0, "Back to Overworld", {
+      fontFamily: "Arial",
+      fontSize: "16px",
+      color: "#ffffff",
+    });
+    buttonText.setOrigin(0.5, 0.5);
+
+    // Add elements to container
+    this.backToOverworldButton.add(buttonBackground);
+    this.backToOverworldButton.add(buttonText);
+
+    // Position the button in the top right corner
+    const { width } = this.scene.scale;
+    this.backToOverworldButton.setPosition(
+      width - buttonWidth / 2 - this.padding,
+      buttonHeight / 2 + this.padding
+    );
+
+    // Make the button interactive
+    buttonBackground.setInteractive({ useHandCursor: true });
+
+    // Add hover effects
+    buttonBackground.on("pointerover", () => {
+      buttonBackground.setFillStyle(0x555555);
+    });
+
+    buttonBackground.on("pointerout", () => {
+      buttonBackground.setFillStyle(0x333333);
+    });
+
+    // Add click event
+    buttonBackground.on("pointerdown", () => {
+      // Emit an event that the TileViewer can listen for
+      this.scene.events.emit("backToOverworldClicked");
+    });
+
+    // Hide by default
+    this.backToOverworldButton.setVisible(false);
+  }
+
+  showBackToOverworldButton() {
+    this.backToOverworldButton.setVisible(true);
+  }
+
+  hideBackToOverworldButton() {
+    this.backToOverworldButton.setVisible(false);
   }
 }

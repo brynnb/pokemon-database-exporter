@@ -135,4 +135,17 @@ export class CameraController {
   isDragging() {
     return this.cameraControls.isDragging;
   }
+
+  resetCamera() {
+    console.log("Resetting camera");
+
+    // Reset zoom to default
+    this.setZoom(DEFAULT_ZOOM);
+
+    // Reset camera position
+    this.mainCamera.setScroll(0, 0);
+
+    // Reset dragging state
+    this.cameraControls.isDragging = false;
+  }
 }

@@ -26,6 +26,9 @@ export class TileViewer extends Scene {
   private npcs: any[] = [];
   private warps: any[] = [];
 
+  // View mode tracking
+  private isOverworldMode: boolean = OVERWORLD_MODE;
+
   // Phaser elements
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private mapContainer: Phaser.GameObjects.Container;
@@ -73,16 +76,37 @@ export class TileViewer extends Scene {
     this.tileManager.preloadCommonTiles();
   }
 
-  create() {
-    // Set up scene cleanup
-    this.events.on("shutdown", this.cleanupResources, this);
+  create(data?: any) {
+    console.log("Creating TileViewer scene", data);
 
-    // Create map container
+    // Ensure we're starting with a clean state
+    this.tiles = [];
+    this.items = [];
+    this.warps = [];
+    this.npcs = [];
+    this.zoneInfo = null;
+
+    // Set up scene cleanup
+    this.events.once("shutdown", this.cleanupResources, this);
+
+    // Create map container - ensure any existing one is destroyed first
+    const existingContainer = this.children.getByName("mapContainer");
+    if (existingContainer) {
+      console.log("Found existing map container, destroying it");
+      existingContainer.destroy();
+    }
+
+    // Create a fresh map container
     this.mapContainer = this.add.container(0, 0);
+    this.mapContainer.name = "mapContainer"; // Add a name for easier debugging
 
     // Initialize managers and controllers
     this.mapRenderer = new MapRenderer(this, this.mapContainer);
     this.cameraController = new CameraController(this);
+
+    // Reset camera to ensure we're starting fresh
+    this.cameraController.resetCamera();
+
     this.uiManager = new UiManager(this);
 
     // Set up keyboard input
@@ -96,7 +120,7 @@ export class TileViewer extends Scene {
       this.mapContainer
     );
 
-    // Handle pointer move for tile info
+    // Handle pointer move for tile info - use once to avoid duplicate handlers
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (this.zoneInfo) {
         this.uiManager.updateTileInfo(
@@ -110,6 +134,72 @@ export class TileViewer extends Scene {
       }
     });
 
+    // Handle warp click event - use once to avoid duplicate handlers
+    this.events.once("warpClicked", async (warp: any) => {
+      if (warp && warp.destination_zone_id) {
+        console.log(
+          `Warp clicked: Destination zone ${warp.destination_zone_id}`
+        );
+
+        // Show loading text
+        this.uiManager.setLoadingText("Warping to new location...");
+
+        try {
+          // Get destination zone info for a better message
+          const destinationZoneInfo = await this.mapDataService.fetchZoneInfo(
+            warp.destination_zone_id
+          );
+          if (destinationZoneInfo && destinationZoneInfo.name) {
+            this.uiManager.setLoadingText(
+              `Warping to ${destinationZoneInfo.name}...`
+            );
+          }
+
+          // Store the destination zone ID in localStorage so we can load it after restart
+          localStorage.setItem(
+            "destinationZoneId",
+            warp.destination_zone_id.toString()
+          );
+
+          // Force a complete scene restart to ensure clean state
+          this.resetScene();
+        } catch (error) {
+          console.error("Error warping to destination:", error);
+          // Still try to load the map even if we couldn't get the zone name
+          localStorage.setItem(
+            "destinationZoneId",
+            warp.destination_zone_id.toString()
+          );
+          this.resetScene();
+        }
+      } else {
+        console.warn("Invalid warp data or missing destination zone ID", warp);
+      }
+    });
+
+    // Handle back to overworld button click - use once to avoid duplicate handlers
+    this.events.once("backToOverworldClicked", () => {
+      console.log("Back to overworld clicked");
+
+      // Clear the current map
+      this.mapRenderer.clear();
+
+      // Show loading text
+      this.uiManager.setLoadingText("Loading overworld map...");
+
+      // Hide the back to overworld button
+      this.uiManager.hideBackToOverworldButton();
+
+      // Clear any stored destination zone ID
+      localStorage.removeItem("destinationZoneId");
+
+      // Set a flag to indicate we want to load the overworld
+      localStorage.setItem("loadOverworld", "true");
+
+      // Force a complete scene restart to ensure clean state
+      this.resetScene();
+    });
+
     // Handle window resize
     this.scale.on("resize", this.handleResize, this);
 
@@ -121,27 +211,80 @@ export class TileViewer extends Scene {
       this.preloadText.destroy();
     }
 
-    // Load map data after UI is initialized
-    if (OVERWORLD_MODE) {
-      this.loadOverworldData();
+    // Check if we have data passed from resetScene
+    let destinationZoneId = null;
+    let loadOverworld = null;
+
+    if (data) {
+      destinationZoneId = data.destinationZoneId;
+      loadOverworld = data.loadOverworld;
     } else {
-      this.loadMapData(DEFAULT_ZONE_ID);
+      // Fall back to localStorage if no data was passed
+      destinationZoneId = localStorage.getItem("destinationZoneId");
+      loadOverworld = localStorage.getItem("loadOverworld");
+    }
+
+    // Clear localStorage to avoid duplicate loads
+    localStorage.removeItem("destinationZoneId");
+    localStorage.removeItem("loadOverworld");
+
+    if (loadOverworld === "true") {
+      console.log("Loading overworld from flag");
+
+      // Set to overworld mode
+      this.isOverworldMode = true;
+
+      // Hide the back to overworld button
+      this.uiManager.hideBackToOverworldButton();
+
+      // Load the overworld map
+      this.loadOverworldData();
+    } else if (destinationZoneId) {
+      // We're coming from a warp, load the destination zone
+      const zoneId = parseInt(destinationZoneId, 10);
+
+      console.log(`Loading destination zone ${zoneId} from warp`);
+
+      // Set to zone view mode
+      this.isOverworldMode = false;
+
+      // Show the back to overworld button
+      this.uiManager.showBackToOverworldButton();
+
+      // Load the destination map
+      this.loadMapData(zoneId);
+    } else {
+      // Normal startup - load map data after UI is initialized
+      if (this.isOverworldMode) {
+        this.loadOverworldData();
+      } else {
+        this.loadMapData(DEFAULT_ZONE_ID);
+      }
     }
   }
 
   setupWebSocket() {
-    // Disconnect from any existing connection first
-    webSocketService.disconnect();
+    try {
+      console.log("Setting up WebSocket connection");
 
-    // Connect to the WebSocket server
-    webSocketService.connect();
+      // Disconnect from any existing connection first
+      webSocketService.disconnect();
 
-    // Listen for tile updates
-    webSocketService.on("tileUpdate", this.handleTileUpdateBound);
+      // Wait a short time to ensure disconnection is complete
+      setTimeout(() => {
+        // Connect to the WebSocket server
+        webSocketService.connect();
 
-    // Handle connection events if needed
-    webSocketService.on("connected", this.handleConnectedBound);
-    webSocketService.on("disconnected", this.handleDisconnectedBound);
+        // Listen for tile updates
+        webSocketService.on("tileUpdate", this.handleTileUpdateBound);
+
+        // Handle connection events if needed
+        webSocketService.on("connected", this.handleConnectedBound);
+        webSocketService.on("disconnected", this.handleDisconnectedBound);
+      }, 100);
+    } catch (error) {
+      console.error("Error setting up WebSocket:", error);
+    }
   }
 
   handleTileUpdate(event: TileUpdateEvent) {
@@ -175,7 +318,26 @@ export class TileViewer extends Scene {
   async loadMapData(zoneId: number) {
     try {
       // Show loading text
-      this.uiManager.setLoadingText("Loading zone info...");
+      this.uiManager.setLoadingText(`Loading zone ${zoneId}...`);
+
+      // Always clear existing data when loading a specific zone
+      this.mapRenderer.clear();
+      this.tiles = [];
+      this.items = [];
+      this.warps = [];
+      this.npcs = [];
+
+      // Reset camera
+      this.cameraController.resetCamera();
+
+      // Remove any zone legend (which is only present in overworld view)
+      this.removeZoneLegend();
+
+      // Update mode
+      this.isOverworldMode = false;
+
+      // Show the back to overworld button
+      this.uiManager.showBackToOverworldButton();
 
       // Fetch zone info
       this.zoneInfo = await this.mapDataService.fetchZoneInfo(zoneId);
@@ -240,14 +402,15 @@ export class TileViewer extends Scene {
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
+        // Reset camera zoom first
+        this.cameraController.setZoom(DEFAULT_ZOOM);
+
+        // Then center the camera
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
       }
 
       // Remove any zone legend
-      const existingLegend = this.children.getByName("zone-legend");
-      if (existingLegend) {
-        existingLegend.destroy();
-      }
+      this.removeZoneLegend();
 
       // Update mode text to show we're viewing a specific zone
       if (this.zoneInfo && this.zoneInfo.name) {
@@ -273,6 +436,22 @@ export class TileViewer extends Scene {
     try {
       // Show loading text
       this.uiManager.setLoadingText("Loading overworld data...");
+
+      // Always clear existing data
+      this.mapRenderer.clear();
+      this.tiles = [];
+      this.items = [];
+      this.warps = [];
+      this.npcs = [];
+
+      // Reset camera
+      this.cameraController.resetCamera();
+
+      // Update mode
+      this.isOverworldMode = true;
+
+      // Hide the back to overworld button
+      this.uiManager.hideBackToOverworldButton();
 
       // Get all overworld zones
       const overworldZones = await this.mapDataService.fetchOverworldZones();
@@ -355,6 +534,10 @@ export class TileViewer extends Scene {
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
+        // Reset camera zoom first
+        this.cameraController.setZoom(DEFAULT_ZOOM);
+
+        // Then center the camera
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
       }
 
@@ -385,24 +568,102 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
-    // Disconnect from WebSocket server
-    webSocketService.disconnect();
+    console.log("Cleaning up resources");
 
-    // Clean up event listeners
-    webSocketService.off("tileUpdate", this.handleTileUpdateBound);
-    webSocketService.off("connected", this.handleConnectedBound);
-    webSocketService.off("disconnected", this.handleDisconnectedBound);
+    // Disconnect from WebSocket server
+    try {
+      webSocketService.disconnect();
+
+      // Remove all event listeners
+      webSocketService.off("tileUpdate", this.handleTileUpdateBound);
+      webSocketService.off("connected", this.handleConnectedBound);
+      webSocketService.off("disconnected", this.handleDisconnectedBound);
+    } catch (error) {
+      console.error("Error disconnecting WebSocket:", error);
+    }
 
     // Clean up other resources
     if (this.mapRenderer) {
-      this.mapRenderer.clear();
+      try {
+        this.mapRenderer.clear();
+      } catch (error) {
+        console.error("Error clearing map renderer:", error);
+      }
     }
 
     if (this.tileManager) {
-      this.tileManager.clearCache();
+      try {
+        this.tileManager.clearCache();
+      } catch (error) {
+        console.error("Error clearing tile manager cache:", error);
+      }
     }
+
+    // Clear all data
+    this.tiles = [];
+    this.items = [];
+    this.warps = [];
+    this.npcs = [];
+
+    // Remove the map container and all its children
+    if (this.mapContainer) {
+      try {
+        // First destroy all children
+        this.mapContainer.each((child: Phaser.GameObjects.GameObject) => {
+          child.destroy();
+        });
+
+        // Then remove all children
+        this.mapContainer.removeAll(true);
+
+        // Finally destroy the container itself
+        this.mapContainer.destroy();
+      } catch (error) {
+        console.error("Error destroying map container:", error);
+      }
+    }
+
+    // Remove any zone legend
+    this.removeZoneLegend();
 
     // Remove resize listener
     this.scale.off("resize", this.handleResize, this);
+
+    // Remove all event listeners
+    this.input.off("pointermove");
+    this.events.off("warpClicked");
+    this.events.off("backToOverworldClicked");
+  }
+
+  removeZoneLegend() {
+    const existingLegend = this.children.getByName("zone-legend");
+    if (existingLegend) {
+      existingLegend.destroy();
+    }
+  }
+
+  resetScene() {
+    console.log("Resetting scene");
+
+    // First, store any data we need to pass to the new scene
+    const data = {
+      destinationZoneId: localStorage.getItem("destinationZoneId"),
+      loadOverworld: localStorage.getItem("loadOverworld"),
+    };
+
+    // Clear localStorage to avoid duplicate loads
+    localStorage.removeItem("destinationZoneId");
+    localStorage.removeItem("loadOverworld");
+
+    // Reset camera
+    if (this.cameraController) {
+      this.cameraController.resetCamera();
+    }
+
+    // Clean up resources
+    this.cleanupResources();
+
+    // Use a simpler approach - just restart the scene once
+    this.scene.restart(data);
   }
 }
