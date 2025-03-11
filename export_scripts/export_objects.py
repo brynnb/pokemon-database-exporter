@@ -318,14 +318,23 @@ def main():
 
     # Get all map object files
     map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
+    print(f"Found {len(map_files)} map files")
 
     # Process each map file
     all_objects = []
+    processed_count = 0
+
     for file_path in map_files:
         objects = process_map_file(file_path, cursor, map_to_zone)
         all_objects.extend(objects)
+        processed_count += 1
+
+    print(f"Processed {processed_count} map files, found {len(all_objects)} objects")
 
     # Insert objects into database
+    signs_count = 0
+    sprites_count = 0
+
     for obj in all_objects:
         cursor.execute(
             """
@@ -351,11 +360,18 @@ def main():
             ),
         )
 
+        if obj.get("object_type") == "sign":
+            signs_count += 1
+        else:
+            sprites_count += 1
+
     # Commit changes and close connection
     conn.commit()
     conn.close()
 
-    print(f"Successfully exported {len(all_objects)} objects to pokemon.db")
+    print(
+        f"Successfully exported {len(all_objects)} objects to pokemon.db ({signs_count} signs, {sprites_count} sprites)"
+    )
     print(
         "Note: Run update_object_coordinates.py to update global coordinates (x, y) based on local coordinates (local_x, local_y)"
     )

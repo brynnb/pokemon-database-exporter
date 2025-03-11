@@ -234,12 +234,13 @@ def parse_tm_hm_moves():
     print(f"Found {len(tm_moves)} TM moves")
 
     # TMs start at item ID 0xC9 (201)
+    tm_count = 0
     for i, move_name in enumerate(tm_moves):
         item_id = 0xC9 + i
         move_id = get_move_id_by_name(move_name)
         if move_id:
             tm_hm_moves[item_id] = move_id
-            print(f"TM{i+1:02d}: {move_name} -> Move ID {move_id}")
+            tm_count += 1
 
     # Extract HM move mappings
     # Format: add_hm MOVE_NAME (creates HM_MOVE_NAME constant and HM##_MOVE = MOVE_NAME)
@@ -254,12 +255,13 @@ def parse_tm_hm_moves():
     print(f"Found {len(hm_moves)} HM moves")
 
     # HMs start at item ID 0xC4 (196)
+    hm_count = 0
     for i, move_name in enumerate(hm_moves):
         item_id = 0xC4 + i
         move_id = get_move_id_by_name(move_name)
         if move_id:
             tm_hm_moves[item_id] = move_id
-            print(f"HM{i+1:02d}: {move_name} -> Move ID {move_id}")
+            hm_count += 1
 
     return tm_hm_moves
 
@@ -296,7 +298,7 @@ def get_move_id_by_name(move_name):
             move_id = int(match.group(2), 16)
             return move_id
 
-    print(f"Warning: Could not find move ID for {move_name}")
+    # Return None if move not found (no warning)
     return None
 
 
@@ -329,6 +331,7 @@ def main():
         key_item_map[item_name] = is_key
 
     # Insert items into database
+    item_count = 0
     for i, name in enumerate(item_names):
         item_id = i + 1  # Item IDs start at 1
         short_name = item_id_to_name.get(item_id, f"UNKNOWN_{item_id}")
@@ -376,8 +379,8 @@ def main():
                 1 if is_key_item else 0,
             ),
         )
+        item_count += 1
 
-    # Add TM/HM items to the database
     # Read move names for TM/HM items
     move_names = {}
     move_constants_path = CONSTANTS_DIR / "move_constants.asm"
@@ -390,8 +393,6 @@ def main():
         move_name = match.group(1)
         move_id = int(match.group(2), 16)
         move_names[move_id] = move_name
-
-    print(f"Found {len(move_names)} move names")
 
     # Get the next available item ID
     cursor.execute("SELECT MAX(id) FROM items")
@@ -409,8 +410,6 @@ def main():
             move_name = move_names[move_id]
             item_name = f"HM{hm_number:02d}"
             short_name = f"HM_{move_name}"
-
-            print(f"Adding HM item: {item_name} ({short_name}) with move ID {move_id}")
 
             try:
                 # Insert HM item into database with sequential ID
@@ -450,8 +449,6 @@ def main():
             item_name = f"TM{tm_number:02d}"
             short_name = f"TM_{move_name}"
 
-            print(f"Adding TM item: {item_name} ({short_name}) with move ID {move_id}")
-
             # TMs have a price (placeholder for now)
             price = 3000
 
@@ -487,7 +484,7 @@ def main():
     conn.commit()
     conn.close()
 
-    print(f"Successfully exported {len(item_names)} items to pokemon.db")
+    print(f"Successfully exported {item_count} items to pokemon.db")
 
 
 if __name__ == "__main__":

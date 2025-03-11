@@ -324,9 +324,6 @@ def find_destination_coordinates(source_map, destination_map, destination_warp_i
 
     # If the file still doesn't exist, return None
     if not destination_file.exists():
-        print(
-            f"Warning: Could not find file for destination map {destination_map} (tried {destination_file_name}.asm and {destination_map}.asm)"
-        )
         return None, None
 
     # Read the destination map file
@@ -348,115 +345,64 @@ def find_destination_coordinates(source_map, destination_map, destination_warp_i
     warp_pattern = r"warp_event\s+(\d+),\s+(\d+),\s+(\w+),\s+(\d+)"
     warp_matches = list(re.finditer(warp_pattern, warp_section))
 
-    # If there are no warps or not enough warps, return None
-    if not warp_matches or len(warp_matches) < destination_warp_id:
-        return None, None
+    # Find the warp with the matching ID
+    for match in warp_matches:
+        warp_id = int(match.group(4))
+        if warp_id == destination_warp_id:
+            x = int(match.group(1))
+            y = int(match.group(2))
+            return x, y
 
-    # Get the warp at the specified index (1-based)
-    warp_match = warp_matches[destination_warp_id - 1]
-
-    # Extract the coordinates
-    x = int(warp_match.group(1))
-    y = int(warp_match.group(2))
-
-    return x, y
+    return None, None
 
 
 def resolve_last_map_warps(all_warps, cursor, map_to_zone_id, map_formats):
-    """Resolve LAST_MAP references by finding the actual source maps"""
-    # Group warps by source map
-    warps_by_map = defaultdict(list)
-    for warp in all_warps:
-        warps_by_map[warp["source_map"]].append(warp)
-
-    # Find and resolve LAST_MAP references
+    """Resolve LAST_MAP references in warps"""
     resolved_warps = []
     resolved_count = 0
 
     for warp in all_warps:
-        if warp["is_last_map"] == 1:
-            # First try to find direct incoming warps
+        if warp["destination_map"] == "LAST_MAP":
+            # Try to find incoming warps to this map
             incoming_warps = find_incoming_warps(all_warps, warp["source_map"])
-
             if incoming_warps:
-                # For each incoming warp, create a resolved warp
-                for incoming in incoming_warps:
-                    resolved_warp = warp.copy()
-                    resolved_warp["destination_map"] = incoming["source_map"]
-                    resolved_warp["destination_map_id"] = incoming.get("source_map_id")
-                    resolved_warp["destination_zone_id"] = get_zone_id_from_mapping(
-                        incoming["source_map"], map_to_zone_id
-                    )
-                    # The destination coordinates are the source coordinates of the incoming warp
-                    resolved_warp["destination_x"] = incoming["source_x"]
-                    resolved_warp["destination_y"] = incoming["source_y"]
-                    resolved_warp["is_last_map"] = 0  # Mark as resolved
-                    resolved_warps.append(resolved_warp)
-                    resolved_count += 1
+                # Use the first incoming warp as the destination
+                incoming_warp = incoming_warps[0]
+                warp["destination_map"] = incoming_warp["source_map"]
+                warp["destination_map_id"] = incoming_warp["source_map_id"]
+                warp["destination_zone_id"] = incoming_warp["source_zone_id"]
+                warp["destination_x"] = incoming_warp["source_x"]
+                warp["destination_y"] = incoming_warp["source_y"]
+                warp["destination_warp_id"] = 0  # Default warp ID
+                resolved_count += 1
+                resolved_warps.append(warp)
             else:
-                # If no direct incoming warps, try to determine the parent location
+                # Try to determine parent location
                 parent_location = determine_parent_location(warp["source_map"])
-
                 if parent_location:
-                    # Find the warp in the parent location that leads to this map
-                    parent_file_name = convert_map_name_to_file_name(parent_location)
-                    parent_file = POKEMON_DATA_DIR / f"{parent_file_name}.asm"
+                    # Convert parent location to map name format
+                    parent_map = convert_map_name_to_constant(parent_location)
+                    parent_file = convert_map_name_to_file_name(parent_map)
 
-                    if parent_file.exists():
-                        with open(parent_file, "r") as f:
-                            content = f.read()
-
-                        # Find the warp that leads to this map
-                        warp_pattern = r"warp_event\s+(\d+),\s+(\d+),\s+(\w+),\s+(\d+)"
-                        warp_matches = re.finditer(warp_pattern, content)
-
-                        found_warp = False
-                        for match in warp_matches:
-                            dest_map = match.group(3)
-                            source_map_upper = warp["source_map"].upper()
-                            source_map_constant = convert_map_name_to_constant(
-                                warp["source_map"]
-                            )
-
-                            if (
-                                dest_map == source_map_upper
-                                or dest_map == source_map_constant
-                            ):
-                                resolved_warp = warp.copy()
-                                resolved_warp["destination_map"] = parent_location
-                                resolved_warp["destination_map_id"] = (
-                                    extract_map_id_from_header(parent_location)
-                                )
-                                resolved_warp["destination_zone_id"] = (
-                                    get_zone_id_from_mapping(
-                                        parent_location, map_to_zone_id
-                                    )
-                                )
-                                resolved_warp["destination_x"] = int(match.group(1))
-                                resolved_warp["destination_y"] = int(match.group(2))
-                                resolved_warp["is_last_map"] = 0  # Mark as resolved
-                                resolved_warps.append(resolved_warp)
-                                resolved_count += 1
-                                found_warp = True
-                                break
-
-                        if not found_warp:
-                            # If no matching warp found, keep the original with a note
-                            print(
-                                f"Warning: No matching warp found in {parent_location} for {warp['source_map']}"
-                            )
-                            resolved_warps.append(warp)
+                    # Check if parent file exists
+                    parent_file_path = POKEMON_DATA_DIR / f"{parent_file}.asm"
+                    if parent_file_path.exists():
+                        # Use parent location as destination
+                        warp["destination_map"] = parent_map
+                        warp["destination_map_id"] = map_formats.get(parent_map)
+                        warp["destination_zone_id"] = get_zone_id_from_mapping(
+                            parent_map, map_to_zone_id
+                        )
+                        warp["destination_x"] = 0  # Default coordinates
+                        warp["destination_y"] = 0
+                        warp["destination_warp_id"] = 0  # Default warp ID
+                        resolved_count += 1
+                        resolved_warps.append(warp)
                     else:
                         # If parent file doesn't exist, keep the original with a note
-                        print(
-                            f"Warning: Parent file {parent_file} not found for {warp['source_map']}"
-                        )
                         resolved_warps.append(warp)
                 else:
                     # If no parent location found, keep the original with a note
-                    print(
-                        f"Warning: No incoming warps or parent location found for {warp['source_map']}, cannot resolve LAST_MAP"
-                    )
                     resolved_warps.append(warp)
         else:
             # Not a LAST_MAP reference
@@ -500,53 +446,47 @@ def main():
         )
         map_to_zone_id[upper_with_underscores] = zone_id
 
-        # Convert UPPER_CASE_WITH_UNDERSCORES to CamelCase
-        if "_" in zone_name:
-            parts = zone_name.split("_")
-            camel_case = "".join(part.capitalize() for part in parts)
-            map_to_zone_id[camel_case] = zone_id
-
-    # Get all map object files
+    # Get all map files
     map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
+    print(f"Found {len(map_files)} map files")
 
-    # First pass: collect all warps
+    # Process each map file
     all_warps = []
+    processed_count = 0
+
     for file_path in map_files:
         map_name = parse_map_name_from_file(file_path)
+        if not map_name:
+            continue
 
+        # Get map ID from map name
+        map_id = map_formats.get(map_name)
+        if not map_id:
+            map_id = extract_map_id_from_header(map_name)
+
+        # Get zone ID for this map
+        zone_id = get_zone_id_for_map(map_name, cursor)
+
+        # Read the map file
         with open(file_path, "r") as f:
             content = f.read()
 
-        # Use the map_to_zone_id mapping instead of querying the database each time
+        # Parse warp events
         warps = parse_warp_events(
             content, map_name, cursor, map_to_zone_id, map_formats
         )
         all_warps.extend(warps)
+        processed_count += 1
 
-    # Second pass: populate destination coordinates for non-LAST_MAP warps
-    for warp in all_warps:
-        if warp["destination_map"] != "LAST_MAP":
-            dest_x, dest_y = find_destination_coordinates(
-                warp["source_map"], warp["destination_map"], warp["destination_warp_id"]
-            )
-            warp["destination_x"] = dest_x
-            warp["destination_y"] = dest_y
+    print(f"Processed {processed_count} map files, found {len(all_warps)} warps")
 
-    # Count original LAST_MAP warps
-    last_map_count = sum(1 for warp in all_warps if warp.get("is_last_map") == 1)
-    print(f"Found {last_map_count} warps using LAST_MAP")
-
-    # Third pass: resolve LAST_MAP references
+    # Resolve LAST_MAP references
     resolved_warps = resolve_last_map_warps(
         all_warps, cursor, map_to_zone_id, map_formats
     )
 
-    # Count unresolved warps
-    unresolved = sum(1 for warp in resolved_warps if warp.get("is_last_map") == 1)
-
-    print(f"Unable to resolve {unresolved} warps")
-
     # Insert warps into database
+    inserted_count = 0
     for warp in resolved_warps:
         cursor.execute(
             """
@@ -570,12 +510,13 @@ def main():
                 warp["destination_warp_id"],
             ),
         )
+        inserted_count += 1
 
     # Commit changes and close connection
     conn.commit()
     conn.close()
 
-    print(f"Successfully exported {len(resolved_warps)} warps to pokemon.db")
+    print(f"Successfully exported {inserted_count} warps to pokemon.db")
 
 
 def get_zone_id_from_mapping(map_name, map_to_zone_id):

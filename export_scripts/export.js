@@ -12,7 +12,21 @@ function runCommand(command) {
   log(`Running: ${command}`);
   try {
     const output = execSync(command, { encoding: "utf8" });
-    log(output.trim());
+    // Only log the summary lines, not all the individual items
+    const summaryLines = output
+      .trim()
+      .split("\n")
+      .filter(
+        (line) =>
+          line.includes("Successfully") ||
+          line.includes("Found") ||
+          line.includes("Processed") ||
+          line.includes("Added") ||
+          line.includes("Resolved") ||
+          line.includes("Error")
+      );
+
+    summaryLines.forEach((line) => log(line));
     return true;
   } catch (error) {
     log(`Error: ${error.message}`);
@@ -85,6 +99,14 @@ async function runExports() {
     return;
   }
   log("Update zone coordinates successful");
+
+  // Run warps exports
+  const warpsSuccess = runCommand("python3 export_scripts/export_warps.py");
+  if (!warpsSuccess) {
+    log("Warps export failed");
+    return;
+  }
+  log("Warps export successful");
 
   // Run objects exports
   const objectsSuccess = runCommand("python3 export_scripts/export_objects.py");

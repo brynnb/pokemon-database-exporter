@@ -151,37 +151,37 @@ export class UiManager {
   updateTileHighlight(tileX: number, tileY: number) {
     // Clear previous highlight
     this.tileHighlight.clear();
-    
+
     const darkGrey = 0x444444;
     const x = tileX * TILE_SIZE;
     const y = tileY * TILE_SIZE;
     const size = TILE_SIZE;
     const bracketSize = 4; // Size of the corner brackets
-    
+
     // Set line style
     this.tileHighlight.lineStyle(1, darkGrey);
-    
+
     // Draw top-left corner bracket
     this.tileHighlight.beginPath();
     this.tileHighlight.moveTo(x, y + bracketSize);
     this.tileHighlight.lineTo(x, y);
     this.tileHighlight.lineTo(x + bracketSize, y);
     this.tileHighlight.strokePath();
-    
+
     // Draw top-right corner bracket
     this.tileHighlight.beginPath();
     this.tileHighlight.moveTo(x + size - bracketSize, y);
     this.tileHighlight.lineTo(x + size, y);
     this.tileHighlight.lineTo(x + size, y + bracketSize);
     this.tileHighlight.strokePath();
-    
+
     // Draw bottom-right corner bracket
     this.tileHighlight.beginPath();
     this.tileHighlight.moveTo(x + size, y + size - bracketSize);
     this.tileHighlight.lineTo(x + size, y + size);
     this.tileHighlight.lineTo(x + size - bracketSize, y + size);
     this.tileHighlight.strokePath();
-    
+
     // Draw bottom-left corner bracket
     this.tileHighlight.beginPath();
     this.tileHighlight.moveTo(x + bracketSize, y + size);

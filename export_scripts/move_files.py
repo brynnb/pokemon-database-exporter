@@ -40,39 +40,35 @@ def extract_tileset_signs():
             # Save the sign tile
             sign_tile.save(tileset_info["output"])
 
-            print(f"Extracted: {os.path.basename(tileset_info['output'])}")
             extracted_count += 1
 
         except Exception as e:
             print(f"Error extracting {tileset_name} sign: {e}")
 
-    print(f"\nSuccessfully extracted {extracted_count} sign tiles")
+    print(f"Successfully extracted {extracted_count} sign tiles")
     return extracted_count > 0
 
 
 def make_white_pixels_transparent(source_path, dest_path, filename="image"):
     """
-    Make white pixels in sprite images transparent
+    Make white pixels transparent in an image
     """
     try:
         # Open the image
         img = Image.open(source_path)
 
-        # Convert to RGBA if it's not already
+        # Convert to RGBA if not already
         if img.mode != "RGBA":
             img = img.convert("RGBA")
 
         # Get the pixel data
         data = img.getdata()
 
-        # Create a new list for the modified pixel data
+        # Create a new list of pixel data with white pixels made transparent
         new_data = []
-
-        # For each pixel, if it's white, make it transparent
         for item in data:
-            # Check if the pixel is white (255, 255, 255)
-            if item[0] == 255 and item[1] == 255 and item[2] == 255:
-                # Make it transparent (R, G, B, A = 0)
+            # If the pixel is white (255, 255, 255), make it transparent
+            if item[0] >= 240 and item[1] >= 240 and item[2] >= 240:
                 new_data.append((255, 255, 255, 0))
             else:
                 new_data.append(item)
@@ -80,49 +76,74 @@ def make_white_pixels_transparent(source_path, dest_path, filename="image"):
         # Update the image with the new data
         img.putdata(new_data)
 
-        # Save the modified image
+        # Save the image
         img.save(dest_path)
-        print(f"Made white pixels transparent in {filename}")
         return True
+
     except Exception as e:
-        print(f"Error making {filename} transparent: {e}")
+        print(f"Error processing {filename}: {e}")
         return False
 
 
 def copy_sprite_files():
     """
-    Copy PNG files from pokemon-game-data/gfx/sprites to the sprites folder
-    and make white pixels transparent
+    Copy sprite files from pokemon-game-data to sprites directory
     """
-    # Define source and destination directories
-    source_dir = os.path.join("pokemon-game-data", "gfx", "sprites")
+    # Create sprites directory if it doesn't exist
     dest_dir = "sprites"
-
-    # Ensure destination directory exists
     os.makedirs(dest_dir, exist_ok=True)
 
-    # Find all PNG files in the source directory
-    png_files = glob.glob(os.path.join(source_dir, "*.png"))
+    # Define source directories and file patterns
+    sprite_sources = [
+        {
+            "dir": os.path.join("pokemon-game-data", "gfx", "sprites"),
+            "pattern": "*.png",
+            "make_transparent": True,
+        },
+        {
+            "dir": os.path.join("pokemon-game-data", "gfx", "tilesets"),
+            "pattern": "*.png",
+            "make_transparent": False,
+        },
+    ]
 
-    if not png_files:
-        print(f"No PNG files found in {source_dir}")
-        return False
-
-    # Copy each PNG file to the destination directory and make white pixels transparent
     copied_count = 0
-    for png_file in png_files:
-        filename = os.path.basename(png_file)
-        dest_path = os.path.join(dest_dir, filename)
+    transparent_count = 0
 
-        try:
-            make_white_pixels_transparent(png_file, dest_path, filename)
-            copied_count += 1
-            print(f"Copied: {filename}")
-        except Exception as e:
-            print(f"Error copying {filename}: {e}")
+    for source in sprite_sources:
+        source_dir = source["dir"]
+        pattern = source["pattern"]
+        make_transparent = source["make_transparent"]
 
-    print(f"\nSuccessfully copied and processed {copied_count} PNG files to {dest_dir}")
-    return True
+        # Find all matching files
+        files = glob.glob(os.path.join(source_dir, pattern))
+
+        for file_path in files:
+            # Get the filename
+            filename = os.path.basename(file_path)
+
+            # Define the destination path
+            dest_path = os.path.join(dest_dir, filename)
+
+            try:
+                # Copy the file
+                shutil.copy2(file_path, dest_path)
+                copied_count += 1
+
+                # Make white pixels transparent if needed
+                if make_transparent:
+                    transparent_path = os.path.join(dest_dir, f"transparent_{filename}")
+                    if make_white_pixels_transparent(
+                        dest_path, transparent_path, filename
+                    ):
+                        transparent_count += 1
+
+            except Exception as e:
+                print(f"Error copying {filename}: {e}")
+
+    print(f"Successfully copied {copied_count} sprite files")
+    print(f"Successfully made {transparent_count} sprite files transparent")
+    return copied_count > 0
 
 
 if __name__ == "__main__":
