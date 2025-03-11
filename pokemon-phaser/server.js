@@ -239,7 +239,7 @@ app.get("/api/overworld-zones", (req, res) => {
 app.get("/api/warps", (req, res) => {
   db.all(
     `SELECT w.id, w.source_zone_id as zone_id, w.x, w.y, 
-            w.destination_zone_id, w.destination_x, w.destination_y
+            w.destination_zone_id, w.destination_map, w.destination_x, w.destination_y
      FROM warps w
      JOIN zones z ON w.source_zone_id = z.id
      WHERE w.x IS NOT NULL AND w.y IS NOT NULL AND z.is_overworld = 1`,

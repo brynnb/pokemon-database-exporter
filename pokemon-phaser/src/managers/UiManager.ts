@@ -143,7 +143,7 @@ export class UiManager {
     const warp = warps.find((w) => w.x === tileX && w.y === tileY);
     if (warp) {
       info += `\nWarp: (${warp.x}, ${warp.y})`;
-      info += `\nDestination: Zone ${warp.destination_zone_id} at (${warp.destination_x}, ${warp.destination_y})`;
+      info += `\nDestination: Zone ${warp.destination_map} at (${warp.destination_x}, ${warp.destination_y})`;
     }
 
     // Update the info text

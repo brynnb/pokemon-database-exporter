@@ -504,7 +504,7 @@ def main():
                 # Apply the zone offset to the warp coordinates
                 x = zone_x + warp["source_x"]
                 y = zone_y + warp["source_y"]
-        
+
         cursor.execute(
             """
             INSERT INTO warps (

@@ -74,7 +74,6 @@ export class MapRenderer {
 
     // Render warps
     for (const warp of warps) {
-
       // Create a transparent red square for each warp
       const warpGraphics = this.scene.add.graphics();
       warpGraphics.fillStyle(0xff0000, 0.5); // Red with 50% transparency
@@ -84,7 +83,6 @@ export class MapRenderer {
         TILE_SIZE,
         TILE_SIZE
       );
-
 
       // Store warp data in the graphics object for hover info
       (warpGraphics as any).warpData = warp;
