@@ -12,5 +12,10 @@
     },
     "author": "",
     "license": "MIT",
-    "dependencies": {}
+    "dependencies": {
+        "webfontloader": "^1.6.28"
+    },
+    "devDependencies": {
+        "@types/webfontloader": "^1.6.38"
+    }
 }

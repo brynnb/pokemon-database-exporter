@@ -43,8 +43,8 @@ export class UiManager {
   createUiElements() {
     // Add info text for displaying tile information
     this.infoText = this.scene.add.text(10, 10, "", {
-      fontFamily: "Arial",
-      fontSize: "16px",
+      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontSize: "12px",
       color: "#ffffff",
       backgroundColor: "#000000",
       padding: { x: 5, y: 5 },
@@ -55,8 +55,8 @@ export class UiManager {
 
     // Add view mode indicator
     this.modeText = this.scene.add.text(10, 30, "Overworld View", {
-      fontFamily: "Arial",
-      fontSize: "16px",
+      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontSize: "12px",
       color: "#ffffff",
       backgroundColor: "#000000",
       padding: { x: 5, y: 5 },
@@ -67,8 +67,9 @@ export class UiManager {
 
     // Add loading text
     this.loadingText = this.scene.add.text(10, 50, "Loading map data...", {
+      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontSize: "12px",
       color: "#ffffff",
-      fontSize: "18px",
       backgroundColor: "#000000",
       padding: { x: 5, y: 5 },
     });
@@ -291,7 +292,7 @@ export class UiManager {
 
     // Create button text
     const buttonText = this.scene.add.text(0, 0, "Back to Overworld", {
-      fontFamily: "Arial",
+      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
       fontSize: "16px",
       color: "#ffffff",
     });
@@ -336,5 +337,36 @@ export class UiManager {
 
   hideBackToOverworldButton() {
     this.backToOverworldButton.setVisible(false);
+  }
+
+  // Add this method to refresh text elements after fonts are loaded
+  refreshTextElements() {
+    // Force a redraw of text elements by setting their text again
+    if (this.infoText) {
+      const currentText = this.infoText.text;
+      this.infoText.setText(currentText);
+    }
+    
+    if (this.modeText) {
+      const currentText = this.modeText.text;
+      this.modeText.setText(currentText);
+    }
+    
+    if (this.loadingText) {
+      const currentText = this.loadingText.text;
+      this.loadingText.setText(currentText);
+    }
+    
+    // Refresh button text if it exists
+    if (this.backToOverworldButton && this.backToOverworldButton.list) {
+      const buttonText = this.backToOverworldButton.list.find(
+        child => child instanceof Phaser.GameObjects.Text
+      ) as Phaser.GameObjects.Text;
+      
+      if (buttonText) {
+        const currentText = buttonText.text;
+        buttonText.setText(currentText);
+      }
+    }
   }
 }

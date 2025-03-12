@@ -10,6 +10,7 @@ import {
   TileUpdateEvent,
   webSocketService,
 } from "../services/WebSocketService";
+import WebFont from "webfontloader";
 
 export class TileViewer extends Scene {
   // Services and managers
@@ -53,17 +54,41 @@ export class TileViewer extends Scene {
   }
 
   preload() {
-    // Create a simple loading text for the preload phase
+    // Create a simple loading text for the preload phase with a fallback font
     this.preloadText = this.add.text(10, 50, "Loading...", {
-      color: "#ffffff",
+      fontFamily: "monospace, Arial",
       fontSize: "18px",
+      color: "#ffffff",
       backgroundColor: "#000000",
+      padding: { x: 5, y: 5 },
     });
     this.preloadText.setScrollFactor(0);
     this.preloadText.setDepth(1000);
 
     // Initialize the tile manager
     this.tileManager = new TileManager(this);
+
+    // Load the Pokemon font using WebFontLoader
+    try {
+      WebFont.load({
+        custom: {
+          families: ["Pokemon Pixel Font"],
+          urls: ["style.css"],
+        },
+        active: () => {
+          console.log("Pokemon font loaded successfully");
+          // Refresh UI elements when font is loaded
+          if (this.uiManager) {
+            this.uiManager.refreshTextElements();
+          }
+        },
+        inactive: () => {
+          console.warn("Pokemon font failed to load, using fallback fonts");
+        },
+      });
+    } catch (e) {
+      console.error("Error loading WebFont:", e);
+    }
 
     // Add error handler for the item-marker (poke_ball) image
     this.load.on("loaderror", (fileObj: any) => {
@@ -108,6 +133,16 @@ export class TileViewer extends Scene {
     this.cameraController.resetCamera();
 
     this.uiManager = new UiManager(this);
+
+    // Try to refresh UI elements if the font is already loaded
+    try {
+      if (document.fonts && document.fonts.check("12px 'Pokemon Pixel Font'")) {
+        console.log("Pokemon font already loaded, refreshing UI");
+        this.uiManager.refreshTextElements();
+      }
+    } catch (e) {
+      console.warn("Font check not supported:", e);
+    }
 
     // Set up keyboard input
     if (this.input.keyboard) {

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pokemon Font Test</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      .test-text {
+        font-family: "Pokemon Pixel Font", monospace;
+        font-size: 24px;
+        color: white;
+        margin: 20px;
+      }
+      .fallback {
+        font-family: monospace;
+        font-size: 24px;
+        color: yellow;
+        margin: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="test-text">This text should use the Pokemon font</div>
+    <div class="fallback">This text uses the fallback font</div>
+
+    <script>
+      // Check if the font is loaded
+      document.fonts.ready.then(() => {
+        console.log("All fonts loaded");
+        if (document.fonts.check("24px 'Pokemon Pixel Font'")) {
+          console.log("Pokemon font loaded successfully");
+        } else {
+          console.warn("Pokemon font not loaded");
+        }
+      });
+    </script>
+  </body>
+</html>
