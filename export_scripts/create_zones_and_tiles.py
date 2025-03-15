@@ -231,6 +231,10 @@ def extract_tile_images(conn):
         # Special case: Map DOJO (tileset ID 5) to GYM (tileset ID 7)
         # This is because in the original game, DOJO uses the same graphics as GYM
         query_tileset_id = 7 if tileset_id == 5 else tileset_id
+        # Special case: Map MART (tileset ID 2) to POKECENTER (tileset ID 6)
+        # This is because marts and pokecenters share similar interior graphics
+        if tileset_id == 2:
+            query_tileset_id = 6
 
         # Get blockset data for this tileset
         cursor.execute(
@@ -331,6 +335,11 @@ def extract_tile_images(conn):
                         block_pos_to_image_id[(5, block_index, pos_index)] = (
                             existing_image_id
                         )
+                    # Special case: If this is the POKECENTER tileset (ID 6), also store the mapping for MART (ID 2)
+                    if tileset_id == 6:
+                        block_pos_to_image_id[(2, block_index, pos_index)] = (
+                            existing_image_id
+                        )
                     duplicate_count += 1
                 else:
                     # Save the image with a sequential number
@@ -355,6 +364,9 @@ def extract_tile_images(conn):
                     # Special case: If this is the GYM tileset (ID 7), also store the mapping for DOJO (ID 5)
                     if tileset_id == 7:
                         block_pos_to_image_id[(5, block_index, pos_index)] = image_id
+                    # Special case: If this is the POKECENTER tileset (ID 6), also store the mapping for MART (ID 2)
+                    if tileset_id == 6:
+                        block_pos_to_image_id[(2, block_index, pos_index)] = image_id
                     unique_image_count += 1
 
                 tile_image_count += 1
@@ -519,6 +531,10 @@ def populate_tiles(conn, block_pos_to_image_id):
             # Special case: Map DOJO (tileset ID 5) to GYM (tileset ID 7)
             # This is because in the original game, DOJO uses the same graphics as GYM
             lookup_tileset_id = 7 if raw_tileset_id == 5 else raw_tileset_id
+            # Special case: Map MART (tileset ID 2) to POKECENTER (tileset ID 6)
+            # This is because marts and pokecenters share similar interior graphics
+            if raw_tileset_id == 2:
+                lookup_tileset_id = 6
 
             # Each block corresponds to 4 tiles (2x2 grid)
             # We need to create 4 entries in the tiles table
