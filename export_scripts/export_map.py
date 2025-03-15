@@ -34,12 +34,17 @@ import argparse
 from PIL import Image, ImageDraw
 
 # Constants
-MAPS_DIR = "pokemon-game-data/maps"
-MAP_HEADERS_DIR = "pokemon-game-data/data/maps/headers"
-MAP_CONSTANTS_FILE = "pokemon-game-data/constants/map_constants.asm"
-BLOCKSETS_DIR = "pokemon-game-data/gfx/blocksets"
-TILESETS_DIR = "pokemon-game-data/gfx/tilesets"
-TILESET_CONSTANTS_FILE = "pokemon-game-data/constants/tileset_constants.asm"
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
+MAPS_DIR = PROJECT_ROOT / "pokemon-game-data/maps"
+MAP_HEADERS_DIR = PROJECT_ROOT / "pokemon-game-data/data/maps/headers"
+MAP_CONSTANTS_FILE = PROJECT_ROOT / "pokemon-game-data/constants/map_constants.asm"
+BLOCKSETS_DIR = PROJECT_ROOT / "pokemon-game-data/gfx/blocksets"
+TILESETS_DIR = PROJECT_ROOT / "pokemon-game-data/gfx/tilesets"
+TILESET_CONSTANTS_FILE = (
+    PROJECT_ROOT / "pokemon-game-data/constants/tileset_constants.asm"
+)
 
 # Regular expressions
 MAP_CONST_PATTERN = re.compile(
@@ -52,7 +57,7 @@ CONNECTION_PATTERN = re.compile(r"\s*connection\s+(\w+),\s+(\w+),\s+(\w+),\s+(-?
 
 def create_database():
     """Create SQLite database and tables for map data"""
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Drop existing tables if they exist
@@ -564,7 +569,7 @@ def render_map(map_name):
     Returns:
         PIL.Image: The rendered map image
     """
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Get map data

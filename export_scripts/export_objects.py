@@ -5,9 +5,12 @@ import sqlite3
 from pathlib import Path
 
 # Constants
-POKEMON_DATA_DIR = Path("pokemon-game-data/data/maps/objects")
-CONSTANTS_DIR = Path("pokemon-game-data/constants")
-MAP_HEADERS_DIR = Path("pokemon-game-data/data/maps/headers")
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
+POKEMON_DATA_DIR = PROJECT_ROOT / "pokemon-game-data/data/maps/objects"
+CONSTANTS_DIR = PROJECT_ROOT / "pokemon-game-data/constants"
+MAP_HEADERS_DIR = PROJECT_ROOT / "pokemon-game-data/data/maps/headers"
 
 # Object types
 OBJECT_TYPE_BG = "sign"
@@ -17,7 +20,7 @@ OBJECT_TYPE_ITEM = "item"
 
 def create_database():
     """Create SQLite database and objects table"""
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Drop existing objects table if it exists

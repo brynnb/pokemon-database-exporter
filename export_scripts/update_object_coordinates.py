@@ -18,6 +18,12 @@ that match the global coordinate system of the tiles.
 
 import sqlite3
 import time
+from pathlib import Path
+
+# Constants
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
 
 
 def get_map_positions(cursor):
@@ -76,7 +82,7 @@ def update_object_coordinates(conn):
 def main():
     """Main function"""
     # Connect to the database
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
 
     # Update object coordinates
     updated_count = update_object_coordinates(conn)

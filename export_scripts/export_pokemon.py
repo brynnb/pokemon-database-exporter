@@ -10,9 +10,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from utils.pokemon_utils import SPECIAL_NAME_MAPPINGS, normalize_pokemon_name
 
 # Constants
-POKEMON_DATA_DIR = "pokemon-game-data/data/pokemon"
-BASE_STATS_DIR = f"{POKEMON_DATA_DIR}/base_stats"
-POKEDEX_CONSTANTS_FILE = "pokemon-game-data/constants/pokedex_constants.asm"
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
+POKEMON_DATA_DIR = PROJECT_ROOT / "pokemon-game-data/data/pokemon"
+BASE_STATS_DIR = POKEMON_DATA_DIR / "base_stats"
+POKEDEX_CONSTANTS_FILE = (
+    PROJECT_ROOT / "pokemon-game-data/constants/pokedex_constants.asm"
+)
 
 # Regular expressions
 DEX_ENTRY_PATTERN = re.compile(
@@ -34,7 +39,7 @@ CRY_PATTERN = re.compile(r"\s*mon_cry [^,]+, \$([0-9A-F]+), \$([0-9A-F]+) ; (.+)
 
 def create_database():
     """Create SQLite database and tables"""
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Drop existing pokemon table if it exists

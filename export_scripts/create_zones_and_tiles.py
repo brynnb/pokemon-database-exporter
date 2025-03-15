@@ -25,13 +25,16 @@ import io
 import re
 
 # Constants
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
 TILE_IMAGES_DIR = "tile_images"
 BATCH_SIZE = 1000  # Number of tiles to insert in a single batch
 
 
 def create_new_tables():
     """Create new tiles and tile_images tables in the database"""
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Drop existing tables if they exist

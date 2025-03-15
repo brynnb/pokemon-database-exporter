@@ -18,7 +18,7 @@ Coordinate System:
 
 This ensures there's no overlap between adjacent maps.
 
-The script processes up to a given number of maps, starting with Pallet Town and branching out
+The script processes all overworld maps, starting with Pallet Town and branching out
 to adjacent maps based on the map_connections table. The maps are processed in
 breadth-first order, ensuring that each map's coordinates are updated relative to
 its connected maps that have already been processed.
@@ -29,10 +29,13 @@ Usage:
 
 import sqlite3
 import time
+from pathlib import Path
 
 # Constants
-PALLET_TOWN_MAP_ID = 1
-MAX_MAPS_TO_PROCESS = 37  # Maximum number of maps to process
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
+PALLET_TOWN_MAP_ID = 0
 BLOCK_SIZE = 2  # Each block is 2x2 tiles
 
 
@@ -183,7 +186,7 @@ def get_all_map_names(cursor):
 
 
 def process_map_connections(conn):
-    """Process map connections for up to MAX_MAPS_TO_PROCESS maps"""
+    """Process all map connections"""
     cursor = conn.cursor()
 
     # Get all map names
@@ -192,7 +195,7 @@ def process_map_connections(conn):
     processed_maps = set()
     map_queue = [(PALLET_TOWN_MAP_ID, 0, 0)]  # (map_id, x_offset, y_offset)
 
-    while map_queue and len(processed_maps) < MAX_MAPS_TO_PROCESS:
+    while map_queue:
         current_map_id, current_x_offset, current_y_offset = map_queue.pop(0)
 
         if current_map_id in processed_maps:
@@ -271,9 +274,7 @@ def process_map_connections(conn):
                 new_y_offset = current_y_offset + y_offset
                 map_queue.append((connected_map_id, new_x_offset, new_y_offset))
 
-    print(
-        f"\nProcessed {len(processed_maps)} maps out of maximum {MAX_MAPS_TO_PROCESS}"
-    )
+    print(f"\nProcessed {len(processed_maps)} maps")
     return processed_maps
 
 
@@ -282,7 +283,7 @@ def main():
     start_time = time.time()
 
     # Connect to the database
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     try:

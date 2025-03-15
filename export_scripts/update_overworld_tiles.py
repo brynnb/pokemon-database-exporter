@@ -1,7 +1,10 @@
 import sqlite3
 import sys
+from pathlib import Path
 
-DB_PATH = "pokemon.db"
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_ROOT / "pokemon.db"
 
 
 def update_overworld_tiles():

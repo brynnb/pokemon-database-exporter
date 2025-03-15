@@ -6,9 +6,12 @@ from pathlib import Path
 from collections import defaultdict
 
 # Constants
-POKEMON_DATA_DIR = Path("pokemon-game-data/data/maps/objects")
-CONSTANTS_DIR = Path("pokemon-game-data/constants")
-MAP_HEADERS_DIR = Path("pokemon-game-data/data/maps/headers")
+# Get the project root directory (parent of the script's directory)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+POKEMON_DATA_DIR = PROJECT_ROOT / "pokemon-game-data/data/maps/objects"
+CONSTANTS_DIR = PROJECT_ROOT / "pokemon-game-data/constants"
+MAP_HEADERS_DIR = PROJECT_ROOT / "pokemon-game-data/data/maps/headers"
+DB_PATH = PROJECT_ROOT / "pokemon.db"
 
 # Map categories
 CITIES_AND_TOWNS = [
@@ -30,7 +33,7 @@ ROUTES = [f"Route{i}" for i in range(1, 26)]
 
 def create_database():
     """Connect to SQLite database and create warps table if it doesn't exist"""
-    conn = sqlite3.connect("pokemon.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Drop existing warps table if it exists
@@ -85,7 +88,26 @@ def extract_map_id_from_header(map_name):
     # Look for map_header directive
     match = re.search(r"map_header\s+\w+,\s+(\w+),", content)
     if match:
-        return match.group(1)
+        return match.group(1)  # Return the constant name, will be converted to ID later
+
+    return None
+
+
+def get_map_id_from_constant(map_constant, map_to_map_id):
+    """Convert a map constant to an integer ID using the mapping"""
+    if not map_constant:
+        return None
+
+    # Try direct lookup
+    if map_constant in map_to_map_id:
+        return map_to_map_id[map_constant]
+
+    # Try other formats
+    if map_constant.lower() in map_to_map_id:
+        return map_to_map_id[map_constant.lower()]
+
+    if map_constant.upper() in map_to_map_id:
+        return map_to_map_id[map_constant.upper()]
 
     return None
 
@@ -152,7 +174,14 @@ def parse_warp_events(content, map_name, cursor, map_to_map_id, map_formats):
     warp_pattern = r"warp_event\s+(\d+),\s+(\d+),\s+(\w+),\s+(\d+)"
     warp_matches = re.finditer(warp_pattern, warp_section)
 
-    map_id = extract_map_id_from_header(map_name)
+    # Get map constant from header
+    map_constant = extract_map_id_from_header(map_name)
+    # Convert map constant to integer ID
+    map_id = None
+    if map_constant:
+        map_id = get_map_id_from_constant(map_constant, map_to_map_id)
+
+    # If not found, try direct lookup
     if not map_id:
         map_id = get_map_id_from_mapping(map_name, map_to_map_id)
 
@@ -165,7 +194,15 @@ def parse_warp_events(content, map_name, cursor, map_to_map_id, map_formats):
         # Extract destination map ID if it's not LAST_MAP
         destination_map_id = None
         if destination != "LAST_MAP":
-            destination_map_id = extract_map_id_from_header(destination)
+            # Get destination map constant from header
+            destination_constant = extract_map_id_from_header(destination)
+            # Convert destination constant to integer ID
+            if destination_constant:
+                destination_map_id = get_map_id_from_constant(
+                    destination_constant, map_to_map_id
+                )
+
+            # If not found, try direct lookup
             if not destination_map_id:
                 destination_map_id = get_map_id_from_mapping(destination, map_to_map_id)
 
@@ -397,11 +434,21 @@ def resolve_last_map_warps(all_warps, cursor, map_to_map_id, map_formats):
                     if parent_file_path.exists():
                         # Use parent location as destination
                         warp["destination_map"] = parent_map
-                        warp["destination_map_id"] = map_formats.get(parent_map)
-                        if not warp["destination_map_id"]:
-                            warp["destination_map_id"] = get_map_id_from_mapping(
+
+                        # Get map ID from map_formats or map_to_map_id
+                        parent_map_id = map_formats.get(parent_map)
+                        if not parent_map_id:
+                            # Try to get map ID from constant
+                            parent_map_id = get_map_id_from_constant(
                                 parent_map, map_to_map_id
                             )
+                            if not parent_map_id:
+                                # Try direct lookup
+                                parent_map_id = get_map_id_from_mapping(
+                                    parent_map, map_to_map_id
+                                )
+
+                        warp["destination_map_id"] = parent_map_id
                         warp["destination_x"] = 0  # Default coordinates
                         warp["destination_y"] = 0
                         warp["destination_warp_id"] = 0  # Default warp ID
@@ -438,23 +485,27 @@ def main():
 
     # Create a map name to map ID mapping
     map_to_map_id = {}
-    cursor.execute("SELECT id, name FROM maps")
-    for map_id, map_name in cursor.fetchall():
-        # Store the original format (ALL_UPPER_CASE_WITH_UNDERSCORES)
-        map_to_map_id[map_name] = map_id
+    try:
+        cursor.execute("SELECT id, name FROM maps")
+        for map_id, map_name in cursor.fetchall():
+            # Store the original format (ALL_UPPER_CASE_WITH_UNDERSCORES)
+            map_to_map_id[map_name] = map_id
 
-        # Store lowercase version
-        map_to_map_id[map_name.lower()] = map_id
+            # Store lowercase version
+            map_to_map_id[map_name.lower()] = map_id
 
-        # Store CamelCase version
-        camel_case = convert_upper_underscore_to_camel(map_name)
-        map_to_map_id[camel_case] = map_id
+            # Store CamelCase version
+            camel_case = convert_upper_underscore_to_camel(map_name)
+            map_to_map_id[camel_case] = map_id
 
-        # Handle floor number variations if present
-        if "F" in map_name:
-            map_to_map_id[map_name.replace("F", "f")] = map_id
-        if "f" in map_name:
-            map_to_map_id[map_name.replace("f", "F")] = map_id
+            # Handle floor number variations if present
+            if "F" in map_name:
+                map_to_map_id[map_name.replace("F", "f")] = map_id
+            if "f" in map_name:
+                map_to_map_id[map_name.replace("f", "F")] = map_id
+    except sqlite3.OperationalError:
+        # If maps table doesn't exist, continue without it
+        print("Warning: 'maps' table not found, continuing without map ID mapping")
 
     # Get all map files
     map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
@@ -476,7 +527,9 @@ def main():
             map_id = get_map_id_from_mapping(map_name, map_to_map_id)
             if not map_id:
                 # If still not found, try to extract from header
-                map_id = extract_map_id_from_header(map_name)
+                map_constant = extract_map_id_from_header(map_name)
+                if map_constant:
+                    map_id = get_map_id_from_constant(map_constant, map_to_map_id)
 
         # Read the map file
         with open(file_path, "r") as f:
@@ -501,12 +554,16 @@ def main():
         x = None
         y = None
         if warp["source_map_id"]:
-            # Get the global coordinates of the map (top-left corner)
-            map_x, map_y = get_map_global_coordinates(cursor, warp["source_map_id"])
-            if map_x is not None and map_y is not None:
-                # Apply the map offset to the warp coordinates
-                x = map_x + warp["source_x"]
-                y = map_y + warp["source_y"]
+            try:
+                # Get the global coordinates of the map (top-left corner)
+                map_x, map_y = get_map_global_coordinates(cursor, warp["source_map_id"])
+                if map_x is not None and map_y is not None:
+                    # Apply the map offset to the warp coordinates
+                    x = map_x + warp["source_x"]
+                    y = map_y + warp["source_y"]
+            except sqlite3.OperationalError:
+                # If tiles table doesn't exist, continue without global coordinates
+                pass
 
         cursor.execute(
             """
@@ -581,17 +638,22 @@ def get_map_global_coordinates(cursor, map_id):
     if not map_id:
         return None, None
 
-    cursor.execute(
-        """
-        SELECT MIN(x), MIN(y) 
-        FROM tiles 
-        WHERE map_id = ?
-        """,
-        (map_id,),
-    )
-    result = cursor.fetchone()
-    if result:
-        return result[0], result[1]
+    try:
+        cursor.execute(
+            """
+            SELECT MIN(x), MIN(y) 
+            FROM tiles 
+            WHERE map_id = ?
+            """,
+            (map_id,),
+        )
+        result = cursor.fetchone()
+        if result:
+            return result[0], result[1]
+    except sqlite3.OperationalError:
+        # If tiles table doesn't exist, return None
+        pass
+
     return None, None
 
 
