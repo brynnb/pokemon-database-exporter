@@ -29,7 +29,7 @@ def create_database():
     CREATE TABLE IF NOT EXISTS objects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        zone_id INTEGER NOT NULL,
+        map_id INTEGER,
         object_type TEXT NOT NULL,
         x INTEGER,
         y INTEGER,
@@ -41,7 +41,7 @@ def create_database():
         action_type TEXT,
         action_direction TEXT,
         item_id INTEGER,
-        FOREIGN KEY (zone_id) REFERENCES zones (id),
+        FOREIGN KEY (map_id) REFERENCES maps (id),
         FOREIGN KEY (item_id) REFERENCES items (id)
     )
     """
@@ -51,83 +51,40 @@ def create_database():
     return conn, cursor
 
 
-def get_all_zones(cursor):
-    """Get all zones from the database"""
-    cursor.execute("SELECT id, name FROM zones")
+def get_all_maps(cursor):
+    """Get all maps from the database"""
+    cursor.execute("SELECT id, name FROM maps")
     return {name: id for id, name in cursor.fetchall()}
 
 
-def create_map_to_zone_mapping(cursor):
-    """Create a mapping between map object file names and zone names"""
-    # Get all zones from the database
-    zones = get_all_zones(cursor)
-
-    # Create a mapping dictionary
-    map_to_zone = {}
-
-    # Direct mappings for cities, towns, and routes
-    for zone_name, zone_id in zones.items():
-        # For cities, towns, and routes, the map file name is likely the same as the zone name
-        map_to_zone[zone_name] = zone_id
-
-    # Add special mappings for buildings and areas that might have different naming conventions
-    # This is a simplified approach - in a real implementation, you'd need to analyze all map names
-    # and create a more comprehensive mapping
-
-    # Example mappings for buildings in cities
-    for zone_name in zones:
-        if (
-            "City" in zone_name
-            or "Town" in zone_name
-            or "Island" in zone_name
-            or "Plateau" in zone_name
-        ):
-            base_name = (
-                zone_name.replace("City", "")
-                .replace("Town", "")
-                .replace("Island", "")
-                .replace("Plateau", "")
-            )
-
-            # Map buildings to their respective cities/towns
-            map_to_zone[f"{base_name}Mart"] = zones[zone_name]
-            map_to_zone[f"{base_name}Pokecenter"] = zones[zone_name]
-            map_to_zone[f"{base_name}Gym"] = zones[zone_name]
-
-    # Add specific mappings for special areas
-    # Create a default zone for maps that don't have a direct mapping
-    default_zone_id = zones.get(
-        "PalletTown", 1
-    )  # Use PalletTown as default or fallback to ID 1
-
-    # Create a new zone entry for each unique map file that doesn't have a direct mapping
-    map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
-    for file_path in map_files:
-        map_name = parse_map_name_from_file(file_path)
-        if map_name not in map_to_zone:
-            # Check if this map is a building or area within a known zone
-            assigned = False
-            for zone_name, zone_id in zones.items():
-                # Try to match the map name with a zone name
-                if zone_name in map_name:
-                    map_to_zone[map_name] = zone_id
-                    assigned = True
-                    break
-
-            # If no match found, create a new entry in the zones table
-            if not assigned:
-                cursor.execute(
-                    "INSERT INTO zones (name, is_overworld) VALUES (?, 0)", (map_name,)
-                )
-                new_zone_id = cursor.lastrowid
-                map_to_zone[map_name] = new_zone_id
-
-    return map_to_zone
+def convert_camel_to_upper_underscore(name):
+    """Convert CamelCase to UPPER_CASE_WITH_UNDERSCORES"""
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).upper()
 
 
-def get_zone_id_for_map(map_name, map_to_zone):
-    """Get zone ID for a map using the mapping"""
-    return map_to_zone.get(map_name)
+def get_map_id_for_map(map_name, cursor):
+    """Get map ID for a map from the maps table"""
+    # Try exact match first
+    cursor.execute("SELECT id FROM maps WHERE name = ?", (map_name,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+
+    # Try case-insensitive match
+    cursor.execute("SELECT id FROM maps WHERE LOWER(name) = LOWER(?)", (map_name,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+
+    # Convert CamelCase to UPPER_CASE_WITH_UNDERSCORES
+    upper_with_underscores = convert_camel_to_upper_underscore(map_name)
+    cursor.execute("SELECT id FROM maps WHERE name = ?", (upper_with_underscores,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+
+    return None
 
 
 def parse_map_name_from_file(file_path):
@@ -284,14 +241,14 @@ def parse_object_events(content, map_name, cursor):
     return objects
 
 
-def process_map_file(file_path, cursor, map_to_zone):
+def process_map_file(file_path, cursor):
     """Process a single map object file and extract all objects"""
     map_name = parse_map_name_from_file(file_path)
 
-    # Get zone ID for this map
-    zone_id = get_zone_id_for_map(map_name, map_to_zone)
-    if not zone_id:
-        print(f"Warning: Could not find zone ID for map {map_name}")
+    # Get map ID for this map
+    map_id = get_map_id_for_map(map_name, cursor)
+    if not map_id:
+        print(f"Warning: Could not find map ID for map {map_name}")
         return []
 
     with open(file_path, "r") as f:
@@ -301,10 +258,10 @@ def process_map_file(file_path, cursor, map_to_zone):
     signs = parse_bg_events(content, map_name)
     objects = parse_object_events(content, map_name, cursor)
 
-    # Combine all objects and add zone_id
+    # Combine all objects and add map_id
     all_objects = signs + objects
     for obj in all_objects:
-        obj["zone_id"] = zone_id
+        obj["map_id"] = map_id
 
     return all_objects
 
@@ -312,9 +269,6 @@ def process_map_file(file_path, cursor, map_to_zone):
 def main():
     # Create database
     conn, cursor = create_database()
-
-    # Create map to zone mapping
-    map_to_zone = create_map_to_zone_mapping(cursor)
 
     # Get all map object files
     map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
@@ -325,7 +279,7 @@ def main():
     processed_count = 0
 
     for file_path in map_files:
-        objects = process_map_file(file_path, cursor, map_to_zone)
+        objects = process_map_file(file_path, cursor)
         all_objects.extend(objects)
         processed_count += 1
 
@@ -339,13 +293,13 @@ def main():
         cursor.execute(
             """
         INSERT INTO objects (
-            name, zone_id, object_type, x, y, local_x, local_y,
+            name, map_id, object_type, x, y, local_x, local_y,
             spriteset_id, sprite_name, text, action_type, action_direction, item_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 obj.get("name"),
-                obj.get("zone_id"),
+                obj.get("map_id"),
                 obj.get("object_type"),
                 obj.get("x"),
                 obj.get("y"),

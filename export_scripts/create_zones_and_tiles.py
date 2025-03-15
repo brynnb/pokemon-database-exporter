@@ -2,13 +2,12 @@
 """
 Pokemon Map Data Restructuring
 
-This script creates a more structured database schema with zones and tiles tables,
+This script creates a more structured database schema with tiles table,
 and extracts 16x16 pixel tile images from the existing tilesets.
 
 The script:
-1. Creates a "zones" table which groups maps by their tileset type
-2. Creates a "tiles" table with x, y coordinates, zone_id, and tile_image_id
-3. Extracts 16x16 pixel tile images from the existing tilesets
+1. Creates a "tiles" table with x, y coordinates, map_id, and tile_image_id
+2. Extracts 16x16 pixel tile images from the existing tilesets
 
 Usage:
     python create_zones_and_tiles.py
@@ -31,27 +30,13 @@ BATCH_SIZE = 1000  # Number of tiles to insert in a single batch
 
 
 def create_new_tables():
-    """Create new zones and tiles tables in the database"""
+    """Create new tiles and tile_images tables in the database"""
     conn = sqlite3.connect("pokemon.db")
     cursor = conn.cursor()
 
     # Drop existing tables if they exist
-    cursor.execute("DROP TABLE IF EXISTS zones")
     cursor.execute("DROP TABLE IF EXISTS tiles")
     cursor.execute("DROP TABLE IF EXISTS tile_images")
-
-    # Create zones table
-    cursor.execute(
-        """
-    CREATE TABLE IF NOT EXISTS zones (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        tileset_id INTEGER,
-        is_overworld INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (tileset_id) REFERENCES tilesets (id)
-    )
-    """
-    )
 
     # Create tiles table
     cursor.execute(
@@ -62,10 +47,10 @@ def create_new_tables():
         y INTEGER NOT NULL,
         local_x INTEGER NOT NULL,
         local_y INTEGER NOT NULL,
-        zone_id INTEGER NOT NULL,
+        map_id INTEGER NOT NULL,
         tile_image_id INTEGER NOT NULL,
         is_overworld INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (zone_id) REFERENCES zones (id),
+        FOREIGN KEY (map_id) REFERENCES maps (id),
         FOREIGN KEY (tile_image_id) REFERENCES tile_images (id)
     )
     """
@@ -87,7 +72,7 @@ def create_new_tables():
     )
 
     # Create indexes for better performance
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tiles_zone_id ON tiles (zone_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tiles_map_id ON tiles (map_id)")
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_tiles_tile_image_id ON tiles (tile_image_id)"
     )
@@ -100,51 +85,6 @@ def create_new_tables():
 
     conn.commit()
     return conn
-
-
-def populate_zones(conn):
-    """Populate the zones table based on the maps table"""
-    cursor = conn.cursor()
-
-    # Get all maps
-    cursor.execute(
-        """
-    SELECT id, name, tileset_id 
-    FROM maps
-    ORDER BY id
-    """
-    )
-
-    maps = cursor.fetchall()
-
-    # Clear existing zones
-    cursor.execute("DELETE FROM zones")
-
-    # Process each map and create a zone for it
-    for map_id, map_name, tileset_id in maps:
-        # Format the name to match the style in map_header_pointers.asm but without the _h suffix
-        # Convert from PALLET_TOWN to PalletTown
-        formatted_name = "".join(word.capitalize() for word in map_name.split("_"))
-
-        cursor.execute(
-            """
-        INSERT INTO zones (name, tileset_id, is_overworld)
-        VALUES (?, ?, ?)
-        """,
-            (formatted_name, tileset_id, 1 if tileset_id == 0 else 0),
-        )
-
-    conn.commit()
-
-    # Get count of zones
-    cursor.execute("SELECT COUNT(*) FROM zones")
-    zone_count = cursor.fetchone()[0]
-
-    # Get count of overworld zones
-    cursor.execute("SELECT COUNT(*) FROM zones WHERE is_overworld = 1")
-    overworld_count = cursor.fetchone()[0]
-
-    print(f"Created {zone_count} zones ({overworld_count} overworld zones)")
 
 
 def decode_2bpp_tile(tile_data):
@@ -386,31 +326,13 @@ def extract_tile_images(conn):
 
 
 def populate_tiles(conn, block_pos_to_image_id):
-    """Populate the tiles table based on the tiles_raw and zones tables"""
+    """Populate the tiles table based on the tiles_raw and maps tables"""
     cursor = conn.cursor()
 
     # Clear the tiles table before repopulating
     print("Clearing existing tiles...")
     cursor.execute("DELETE FROM tiles")
     conn.commit()
-
-    # Get all zones
-    cursor.execute("SELECT id, name, is_overworld FROM zones")
-    zones = cursor.fetchall()
-
-    # Create a mapping of map name to zone_id and is_overworld flag
-    map_name_to_zone_info = {}
-    for zone_id, zone_name, is_overworld in zones:
-        # Convert zone name back to map format for matching
-        # e.g., "PalletTown" -> "PALLET_TOWN"
-        map_style_name = re.sub(r"([a-z])([A-Z])", r"\1_\2", zone_name).upper()
-        map_name_to_zone_info[map_style_name] = (zone_id, is_overworld)
-
-        # Handle special cases for routes
-        if zone_name.startswith("Route"):
-            route_num = zone_name[5:]  # Extract route number
-            route_map_name = f"ROUTE_{route_num}"
-            map_name_to_zone_info[route_map_name] = (zone_id, is_overworld)
 
     # Check if the tiles_raw table exists
     cursor.execute(
@@ -422,12 +344,11 @@ def populate_tiles(conn, block_pos_to_image_id):
         print("Error: tiles_raw table does not exist. Please run export_map.py first.")
         return
 
-    # Get all maps with their zone IDs
+    # Get all maps with their is_overworld flag
     cursor.execute(
         """
-    SELECT m.id, m.name, m.width, m.height, m.tileset_id, z.id as zone_id, z.is_overworld
-    FROM maps m
-    LEFT JOIN zones z ON UPPER(z.name) = UPPER(REPLACE(REPLACE(m.name, '_', ''), ' ', ''))
+    SELECT id, name, width, height, tileset_id, is_overworld
+    FROM maps
     """
     )
 
@@ -465,8 +386,7 @@ def populate_tiles(conn, block_pos_to_image_id):
         width,
         height,
         tileset_id,
-        db_zone_id,
-        db_is_overworld,
+        is_overworld,
     ) in enumerate(maps, 1):
         # Update progress every 5 maps
         if i % 5 == 0 or i == total_maps:
@@ -474,32 +394,6 @@ def populate_tiles(conn, block_pos_to_image_id):
                 f"\rProcessed {i}/{total_maps} maps, created {tile_count} tiles"
             )
             sys.stdout.flush()
-
-        # Get the zone_id and is_overworld flag for this map
-        zone_info = map_name_to_zone_info.get(map_name)
-
-        if zone_info:
-            zone_id, is_overworld = zone_info
-        else:
-            # If not found in our mapping, use the one from the database join if available
-            if db_zone_id is not None:
-                zone_id = db_zone_id
-                is_overworld = db_is_overworld if db_is_overworld is not None else 0
-            else:
-                # Try a more flexible match
-                map_name_simplified = map_name.replace("_", "").lower()
-                for z_name, z_info in map_name_to_zone_info.items():
-                    if z_name.replace("_", "").lower() == map_name_simplified:
-                        zone_id, is_overworld = z_info
-                        break
-                else:
-                    zone_id = None
-                    is_overworld = 0
-
-        if not zone_id:
-            skipped_maps += 1
-            skipped_map_names.append(map_name)
-            continue
 
         processed_maps += 1
 
@@ -567,7 +461,7 @@ def populate_tiles(conn, block_pos_to_image_id):
                         tile_y,
                         tile_x,
                         tile_y,
-                        zone_id,
+                        map_id,
                         tile_image_id,
                         is_overworld,
                     )
@@ -584,7 +478,7 @@ def populate_tiles(conn, block_pos_to_image_id):
         if len(tiles_data) >= BATCH_SIZE:
             cursor.executemany(
                 """
-            INSERT INTO tiles (x, y, local_x, local_y, zone_id, tile_image_id, is_overworld)
+            INSERT INTO tiles (x, y, local_x, local_y, map_id, tile_image_id, is_overworld)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
                 tiles_data,
@@ -596,23 +490,16 @@ def populate_tiles(conn, block_pos_to_image_id):
     if tiles_data:
         cursor.executemany(
             """
-        INSERT INTO tiles (x, y, local_x, local_y, zone_id, tile_image_id, is_overworld)
+        INSERT INTO tiles (x, y, local_x, local_y, map_id, tile_image_id, is_overworld)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             tiles_data,
         )
         conn.commit()
 
-    # Print information about skipped maps
-    print(f"\nSkipped {skipped_maps} maps due to missing zone_id mapping:")
-    for i, map_name in enumerate(skipped_map_names[:20], 1):
-        print(f"  {i}. {map_name}")
-    if len(skipped_map_names) > 20:
-        print(f"  ... and {len(skipped_map_names) - 20} more")
-
     elapsed_time = time.time() - start_time
     print(
-        f"Created {tile_count} tiles from {processed_maps} maps (skipped {skipped_maps} maps) in {elapsed_time:.2f} seconds"
+        f"\nCreated {tile_count} tiles from {processed_maps} maps in {elapsed_time:.2f} seconds"
     )
 
 
@@ -623,9 +510,6 @@ def main():
     print("Creating new tables...")
     conn = create_new_tables()
 
-    print("\nPopulating zones table...")
-    populate_zones(conn)
-
     print("\nExtracting tile images...")
     block_pos_to_image_id = extract_tile_images(conn)
 
@@ -634,9 +518,6 @@ def main():
 
     # Print summary
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM zones")
-    zone_count = cursor.fetchone()[0]
-
     cursor.execute("SELECT COUNT(*) FROM tile_images")
     tile_image_count = cursor.fetchone()[0]
 
@@ -646,7 +527,6 @@ def main():
     total_elapsed_time = time.time() - total_start_time
 
     print("\nSummary:")
-    print(f"- Created {zone_count} zones")
     print(f"- Extracted {tile_image_count} unique tile images")
     print(f"- Created {tile_count} tiles")
     print(f"- Total time: {total_elapsed_time:.2f} seconds")

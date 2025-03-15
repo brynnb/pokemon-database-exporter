@@ -3,13 +3,13 @@
 Update Object Coordinates
 
 This script updates the global coordinates (x, y) of objects in the database
-based on their local coordinates (local_x, local_y) and the position of their zone.
+based on their local coordinates (local_x, local_y) and the position of their map.
 
 Coordinate System:
-- For overworld zones (is_overworld = 1), global coordinates are calculated by adding
-  the zone's offset to the local coordinates. The zone's offset is determined by the
-  global coordinates of the (0,0) local coordinates in that zone.
-- For non-overworld zones (is_overworld = 0), global coordinates are the same as
+- For overworld maps (is_overworld = 1), global coordinates are calculated by adding
+  the map's offset to the local coordinates. The map's offset is determined by the
+  global coordinates of the (0,0) local coordinates in that map.
+- For non-overworld maps (is_overworld = 0), global coordinates are the same as
   local coordinates.
 
 This ensures that objects in the overworld have consistent global coordinates
@@ -20,50 +20,50 @@ import sqlite3
 import time
 
 
-def get_zone_positions(cursor):
-    """Get the positions of all zones"""
-    # For overworld zones, get the global coordinates of the (0,0) local coordinates
+def get_map_positions(cursor):
+    """Get the positions of all maps"""
+    # For overworld maps, get the global coordinates of the (0,0) local coordinates
     cursor.execute(
         """
-        SELECT z.id, t.x, t.y
-        FROM zones z
-        JOIN tiles t ON z.id = t.zone_id
-        WHERE z.is_overworld = 1 AND t.local_x = 0 AND t.local_y = 0
-        GROUP BY z.id
+        SELECT m.id, t.x, t.y
+        FROM maps m
+        JOIN tiles t ON m.id = t.map_id
+        WHERE m.is_overworld = 1 AND t.local_x = 0 AND t.local_y = 0
+        GROUP BY m.id
         """
     )
-    return {zone_id: (x, y) for zone_id, x, y in cursor.fetchall()}
+    return {map_id: (x, y) for map_id, x, y in cursor.fetchall()}
 
 
 def update_object_coordinates(conn):
-    """Update the global coordinates of objects based on their zone's position"""
+    """Update the global coordinates of objects based on their map's position"""
     cursor = conn.cursor()
 
-    # Get zone positions for overworld zones
-    zone_positions = get_zone_positions(cursor)
+    # Get map positions for overworld maps
+    map_positions = get_map_positions(cursor)
 
-    # Update object coordinates for overworld zones
+    # Update object coordinates for overworld maps
     total_updated = 0
-    for zone_id, (offset_x, offset_y) in zone_positions.items():
+    for map_id, (offset_x, offset_y) in map_positions.items():
         cursor.execute(
             """
             UPDATE objects
             SET x = local_x + ?,
                 y = local_y + ?
-            WHERE zone_id = ?
+            WHERE map_id = ?
             """,
-            (offset_x, offset_y, zone_id),
+            (offset_x, offset_y, map_id),
         )
         total_updated += cursor.rowcount
 
-    # For non-overworld zones, set global coordinates equal to local coordinates
+    # For non-overworld maps, set global coordinates equal to local coordinates
     cursor.execute(
         """
         UPDATE objects
         SET x = local_x,
             y = local_y
-        WHERE zone_id IN (
-            SELECT id FROM zones WHERE is_overworld = 0
+        WHERE map_id IN (
+            SELECT id FROM maps WHERE is_overworld = 0
         )
         """
     )
