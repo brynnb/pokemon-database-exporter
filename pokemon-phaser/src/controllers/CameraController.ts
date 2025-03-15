@@ -1,11 +1,15 @@
 import { Scene } from "phaser";
 import { MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM, ZOOM_STEP } from "../constants";
 
+// Define a constant for non-overworld zoom level
+const NON_OVERWORLD_ZOOM = 2.0; // Much more zoomed in than DEFAULT_ZOOM
+
 export class CameraController {
   private scene: Scene;
   private mainCamera: Phaser.Cameras.Scene2D.Camera;
   private uiCamera!: Phaser.Cameras.Scene2D.Camera; // UI camera for HUD elements
   private zoomLevel: number = DEFAULT_ZOOM;
+  private isOverworld: boolean = true; // Track whether we're in overworld mode
   private cameraControls = {
     isDragging: false,
     lastPointerPosition: { x: 0, y: 0 },
@@ -136,11 +140,38 @@ export class CameraController {
     return this.cameraControls.isDragging;
   }
 
+  /**
+   * Set the view mode to overworld or non-overworld and adjust zoom accordingly
+   * @param isOverworld Whether the current view is the overworld
+   */
+  setViewMode(isOverworld: boolean) {
+    this.isOverworld = isOverworld;
+
+    // Set appropriate zoom level based on view mode
+    if (isOverworld) {
+      this.setZoom(DEFAULT_ZOOM);
+    } else {
+      this.setZoom(NON_OVERWORLD_ZOOM);
+    }
+  }
+
+  /**
+   * Get the current view mode
+   * @returns Whether the current view is in overworld mode
+   */
+  isInOverworldMode(): boolean {
+    return this.isOverworld;
+  }
+
   resetCamera() {
     console.log("Resetting camera");
 
-    // Reset zoom to default
-    this.setZoom(DEFAULT_ZOOM);
+    // Reset zoom to appropriate default based on current view mode
+    if (this.isOverworld) {
+      this.setZoom(DEFAULT_ZOOM);
+    } else {
+      this.setZoom(NON_OVERWORLD_ZOOM);
+    }
 
     // Reset camera position
     this.mainCamera.setScroll(0, 0);

@@ -238,8 +238,8 @@ export class TileViewer extends Scene {
     // Handle window resize
     this.scale.on("resize", this.handleResize, this);
 
-    // Set initial zoom
-    this.cameraController.setZoom(DEFAULT_ZOOM);
+    // Set initial zoom based on view mode
+    this.cameraController.setViewMode(this.isOverworldMode);
 
     // Remove preload text
     if (this.preloadText) {
@@ -268,6 +268,8 @@ export class TileViewer extends Scene {
 
       // Set to overworld mode
       this.isOverworldMode = true;
+      // Set camera to overworld mode
+      this.cameraController.setViewMode(true);
 
       // Hide the back to overworld button
       this.uiManager.hideBackToOverworldButton();
@@ -282,6 +284,8 @@ export class TileViewer extends Scene {
 
       // Set to zone view mode
       this.isOverworldMode = false;
+      // Set camera to non-overworld mode
+      this.cameraController.setViewMode(false);
 
       // Show the back to overworld button
       this.uiManager.showBackToOverworldButton();
@@ -291,8 +295,12 @@ export class TileViewer extends Scene {
     } else {
       // Normal startup - load map data after UI is initialized
       if (this.isOverworldMode) {
+        // Set camera to overworld mode
+        this.cameraController.setViewMode(true);
         this.loadOverworldData();
       } else {
+        // Set camera to non-overworld mode
+        this.cameraController.setViewMode(false);
         this.loadMapData(DEFAULT_ZONE_ID);
       }
     }
@@ -353,9 +361,9 @@ export class TileViewer extends Scene {
   async loadMapData(zoneId: number) {
     try {
       // Show loading text
-      this.uiManager.setLoadingText(`Loading zone ${zoneId}...`);
+      this.uiManager.setLoadingText(`Loading map data for zone ${zoneId}...`);
 
-      // Always clear existing data when loading a specific zone
+      // Always clear existing data
       this.mapRenderer.clear();
       this.tiles = [];
       this.items = [];
@@ -370,6 +378,8 @@ export class TileViewer extends Scene {
 
       // Update mode
       this.isOverworldMode = false;
+      // Set camera to non-overworld mode
+      this.cameraController.setViewMode(false);
 
       // Show the back to overworld button
       this.uiManager.showBackToOverworldButton();
@@ -437,8 +447,8 @@ export class TileViewer extends Scene {
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
-        // Reset camera zoom first
-        this.cameraController.setZoom(DEFAULT_ZOOM);
+        // Set camera to non-overworld mode (this will set the appropriate zoom)
+        this.cameraController.setViewMode(false);
 
         // Then center the camera
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
@@ -484,6 +494,8 @@ export class TileViewer extends Scene {
 
       // Update mode
       this.isOverworldMode = true;
+      // Set camera to overworld mode
+      this.cameraController.setViewMode(true);
 
       // Hide the back to overworld button
       this.uiManager.hideBackToOverworldButton();
@@ -569,8 +581,8 @@ export class TileViewer extends Scene {
 
       // Center the camera on the map
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
-        // Reset camera zoom first
-        this.cameraController.setZoom(DEFAULT_ZOOM);
+        // Set camera to overworld mode (this will set the appropriate zoom)
+        this.cameraController.setViewMode(true);
 
         // Then center the camera
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);

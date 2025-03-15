@@ -293,7 +293,7 @@ export class UiManager {
     // Create button text
     const buttonText = this.scene.add.text(0, 0, "Back to Overworld", {
       fontFamily: "'Pokemon Pixel Font', monospace, Arial",
-      fontSize: "16px",
+      fontSize: "11px",
       color: "#ffffff",
     });
     buttonText.setOrigin(0.5, 0.5);
@@ -346,23 +346,23 @@ export class UiManager {
       const currentText = this.infoText.text;
       this.infoText.setText(currentText);
     }
-    
+
     if (this.modeText) {
       const currentText = this.modeText.text;
       this.modeText.setText(currentText);
     }
-    
+
     if (this.loadingText) {
       const currentText = this.loadingText.text;
       this.loadingText.setText(currentText);
     }
-    
+
     // Refresh button text if it exists
     if (this.backToOverworldButton && this.backToOverworldButton.list) {
       const buttonText = this.backToOverworldButton.list.find(
-        child => child instanceof Phaser.GameObjects.Text
+        (child) => child instanceof Phaser.GameObjects.Text
       ) as Phaser.GameObjects.Text;
-      
+
       if (buttonText) {
         const currentText = buttonText.text;
         buttonText.setText(currentText);
