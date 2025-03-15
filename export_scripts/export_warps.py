@@ -557,14 +557,32 @@ def main():
             try:
                 # Get the global coordinates of the map (top-left corner)
                 map_x, map_y = get_map_global_coordinates(cursor, warp["source_map_id"])
+
                 if map_x is not None and map_y is not None:
                     # Apply the map offset to the warp coordinates
                     x = map_x + warp["source_x"]
                     y = map_y + warp["source_y"]
-            except sqlite3.OperationalError:
-                # If tiles table doesn't exist, continue without global coordinates
-                pass
 
+                    # Ensure x and y are integers, not None
+                    if x is not None and y is not None:
+                        x = int(x)
+                        y = int(y)
+                else:
+                    # For maps without coordinates, use local coordinates as global coordinates
+                    # This ensures at least some coordinates are set
+                    x = warp["source_x"]
+                    y = warp["source_y"]
+            except sqlite3.OperationalError as e:
+                # If tiles table doesn't exist, continue without global coordinates
+                # Use local coordinates as fallback
+                x = warp["source_x"]
+                y = warp["source_y"]
+        else:
+            # If no map_id, still use local coordinates as global coordinates
+            x = warp["source_x"]
+            y = warp["source_y"]
+
+        # Use a parameterized query with explicit column names
         cursor.execute(
             """
             INSERT INTO warps (
@@ -578,8 +596,8 @@ def main():
                 warp["source_map_id"],
                 warp["source_x"],
                 warp["source_y"],
-                x,
-                y,
+                x,  # Explicitly pass x
+                y,  # Explicitly pass y
                 warp["destination_map"],
                 warp["destination_map_id"],
                 warp["destination_x"],
@@ -589,11 +607,17 @@ def main():
         )
         inserted_count += 1
 
-    # Commit changes and close connection
-    conn.commit()
-    conn.close()
+        # Commit more frequently to ensure data is saved
+        if inserted_count % 50 == 0:
+            conn.commit()
+            print(f"Committed {inserted_count} warps so far")
 
-    print(f"Successfully exported {inserted_count} warps to pokemon.db")
+    # Final commit
+    conn.commit()
+    print(f"Final commit: Successfully exported {inserted_count} warps to pokemon.db")
+
+    # Close the database connection
+    conn.close()
 
 
 def get_map_id_from_mapping(map_name, map_to_map_id):
