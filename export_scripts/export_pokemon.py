@@ -128,6 +128,11 @@ def extract_base_stats():
             types_match = re.search(r"db (\w+), (\w+) ; type", content)
             if types_match:
                 type_1, type_2 = types_match.groups()
+                # Fix for PSYCHIC_TYPE -> PSYCHIC
+                if type_1 == "PSYCHIC_TYPE":
+                    type_1 = "PSYCHIC"
+                if type_2 == "PSYCHIC_TYPE":
+                    type_2 = "PSYCHIC"
             else:
                 continue
 

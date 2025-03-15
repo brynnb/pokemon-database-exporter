@@ -23,6 +23,11 @@ FIELD_MOVES = {
     "SOFTBOILED",
 }
 
+# Type mapping to ensure consistent type names
+TYPE_MAPPING = {
+    "PSYCHIC_TYPE": "PSYCHIC",
+}
+
 
 def create_database():
     """Create SQLite database and tables"""
@@ -61,9 +66,32 @@ def create_database():
     return conn
 
 
+def parse_move_constants():
+    """Parse move constants from move_constants.asm"""
+    move_constants = {}
+
+    with open(CONSTANTS_DIR / "move_constants.asm", "r") as f:
+        lines = f.readlines()
+
+    for line in lines:
+        match = re.search(r"const (\w+)\s*; (\w+)", line)
+        if match:
+            move_name = match.group(1)
+            move_id_str = match.group(2)
+            try:
+                move_id = int(move_id_str, 16)
+                move_constants[move_name] = move_id
+            except ValueError:
+                # Skip constants that don't have a valid hex ID
+                continue
+
+    return move_constants
+
+
 def parse_move_data():
     """Parse move data from moves.asm"""
     moves_data = {}
+    move_name_to_type = {}  # New mapping of move names to types
 
     with open(POKEMON_DATA_DIR / "moves.asm", "r") as f:
         lines = f.readlines()
@@ -89,8 +117,9 @@ def parse_move_data():
             )
             if match:
                 animation, effect, power, type_name, accuracy, pp = match.groups()
-                moves_data[move_id] = {
-                    "id": move_id,
+                # Map the type name to its proper value
+                type_name = TYPE_MAPPING.get(type_name, type_name)
+                moves_data[animation] = {
                     "animation": animation,
                     "effect": effect,
                     "power": int(power),
@@ -98,9 +127,10 @@ def parse_move_data():
                     "accuracy": int(accuracy),
                     "pp": int(pp),
                 }
-                move_id += 1
+                # Store the mapping of move name to type
+                move_name_to_type[animation] = type_name
 
-    return moves_data
+    return moves_data, move_name_to_type
 
 
 def parse_move_names():
@@ -257,14 +287,20 @@ def main():
     cursor = conn.cursor()
 
     # Parse data
-    moves_data = parse_move_data()
+    move_constants = parse_move_constants()
+    moves_data, move_name_to_type = parse_move_data()
     move_names = parse_move_names()
     move_sounds = parse_move_sounds()
     move_grammar = parse_move_grammar()
     battle_animations = parse_battle_animations()
 
     # Insert data into database
-    for move_id, move_data in moves_data.items():
+    for move_name, move_data in moves_data.items():
+        # Get the move ID from the constants
+        move_id = move_constants.get(move_name, 0)
+        if move_id == 0:
+            continue  # Skip moves without a valid ID
+
         # Get sound data
         sound_data = move_sounds.get(
             move_id, {"sound": "NO_SOUND", "pitch": 0, "tempo": 0}
@@ -301,6 +337,9 @@ def main():
             battle_tileset = first_anim.get("tileset", 0) or 0
             battle_delay = first_anim.get("delay", 0) or 0
 
+        # Get the type for this move
+        type_name = move_data["type"]
+
         cursor.execute(
             """
             INSERT INTO moves (
@@ -316,7 +355,7 @@ def main():
                 short_name,
                 move_data["effect"],
                 move_data["power"],
-                move_data["type"],
+                type_name,
                 move_data["accuracy"],
                 move_data["pp"],
                 move_data["animation"],
