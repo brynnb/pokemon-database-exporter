@@ -149,7 +149,6 @@ export class TileViewer extends Scene {
 
     // Log the current camera state in registry for debugging
     const savedCameraState = this.game.registry.get("overworldCameraState");
-    console.log("Current camera state in global registry:", savedCameraState);
 
     // Check if we should preserve camera state
     const shouldPreserveCamera =
@@ -159,24 +158,7 @@ export class TileViewer extends Scene {
 
     // Only reset the camera if we're not returning to overworld or warping to a zone
     if (!shouldPreserveCamera) {
-      console.log("Resetting camera in create");
       this.cameraController.resetCamera();
-    } else {
-      console.log("Preserving camera state for overworld return or zone warp");
-
-      // Verify we have a valid camera state to restore
-      if (savedCameraState && savedCameraState.saved) {
-        console.log(
-          "Valid camera state found for preservation:",
-          savedCameraState
-        );
-      } else if (destinationZoneId) {
-        console.log(
-          "No camera state found, but we're warping to a zone so that's OK"
-        );
-      } else {
-        console.warn("No valid camera state found for preservation");
-      }
     }
 
     this.uiManager = new UiManager(this);
@@ -238,16 +220,8 @@ export class TileViewer extends Scene {
 
             // Always save the overworld camera state if we're in overworld mode
             if (this.isOverworldMode) {
-              console.log("Saving overworld camera state before warping");
               // Let the camera controller handle saving the state
               this.cameraController.saveOverworldCameraState();
-
-              // Verify it was saved
-              const savedState = this.game.registry.get("overworldCameraState");
-              console.log(
-                "Verified camera state after saving before warp:",
-                savedState
-              );
             }
 
             // Store the destination zone ID in registry
@@ -257,8 +231,8 @@ export class TileViewer extends Scene {
             );
 
             // Force a complete scene restart to ensure clean state
-            // IMPORTANT: Don't reset the camera when warping from overworld to preserve the camera state
-            this.resetScene(false); // Changed from true to false to preserve camera state
+            // Don't reset the camera when warping from overworld to preserve the camera state
+            this.resetScene(false);
           } else {
             console.warn(
               `Zone info not found for destination zone ${warp.destination_zone_id}`
@@ -283,8 +257,6 @@ export class TileViewer extends Scene {
 
     // Handle back to overworld button click - use once to avoid duplicate handlers
     this.events.once("backToOverworldClicked", () => {
-      console.log("Back to overworld clicked");
-
       // Clear the current map
       this.mapRenderer.clear();
 
@@ -300,14 +272,9 @@ export class TileViewer extends Scene {
         const currentCameraState = this.game.registry.get(
           "overworldCameraState"
         );
-        console.log(
-          "Current camera state before back to overworld:",
-          currentCameraState
-        );
 
         // If we don't have a saved camera state, create one with default values
         if (!currentCameraState || !currentCameraState.saved) {
-          console.log("No saved camera state found, creating default state");
           const defaultState = {
             x: 0,
             y: 0,
@@ -316,30 +283,13 @@ export class TileViewer extends Scene {
             timestamp: Date.now(),
           };
           this.game.registry.set("overworldCameraState", defaultState);
-          console.log("Created default camera state:", defaultState);
         }
 
         // Set flags in registry to indicate we want to load the overworld
         // and should use saved camera position
         this.game.registry.set("loadOverworld", true);
         this.game.registry.set("useOverworldSavedCamera", true);
-
-        // Verify the flags were set
-        console.log(
-          "loadOverworld flag set:",
-          this.game.registry.get("loadOverworld")
-        );
-        console.log(
-          "useOverworldSavedCamera flag set:",
-          this.game.registry.get("useOverworldSavedCamera")
-        );
-      } else {
-        console.log("Already in overworld mode, no need to set flags");
       }
-
-      // Log the current saved state for debugging
-      const savedState = this.game.registry.get("overworldCameraState");
-      console.log("Current saved overworld camera state:", savedState);
 
       // Force a complete scene restart to ensure clean state
       // We don't need to reset the camera here as we want to preserve the saved state
@@ -680,46 +630,24 @@ export class TileViewer extends Scene {
         this.game.registry.get("useOverworldSavedCamera") === true ||
         this.game.registry.get("loadOverworld") === true;
 
-      // Log the current camera state for debugging
+      // Get the current camera state from registry
       const savedCameraState = this.game.registry.get("overworldCameraState");
-      console.log("Camera state before restore:", savedCameraState);
 
       // Try to restore the saved camera position
       let restored = false;
       if (isReturningFromZone) {
-        console.log(
-          "Returning from zone view, attempting to restore camera position"
-        );
-
         // Double-check that we have a valid camera state
         if (savedCameraState && savedCameraState.saved) {
-          console.log("Found valid camera state to restore:", savedCameraState);
           restored = this.cameraController.restoreOverworldCameraState();
-          console.log("Camera position restored:", restored);
-        } else {
-          console.warn("No valid camera state found to restore");
         }
 
         // Clear the flags after restoration attempt
         this.game.registry.remove("useOverworldSavedCamera");
         this.game.registry.remove("loadOverworld");
-
-        // Don't remove the camera state from registry - keep it for future use
-      } else {
-        console.log(
-          "Not returning from zone view, not restoring camera position"
-        );
-
+      } else if (savedCameraState && savedCameraState.saved) {
         // Even if we're not explicitly returning from a zone view,
         // check if we have a valid camera state to restore
-        if (savedCameraState && savedCameraState.saved) {
-          console.log(
-            "Found valid camera state to restore anyway:",
-            savedCameraState
-          );
-          restored = this.cameraController.restoreOverworldCameraState();
-          console.log("Camera position restored anyway:", restored);
-        }
+        restored = this.cameraController.restoreOverworldCameraState();
       }
 
       // Only center the camera if we couldn't restore a saved position
@@ -728,7 +656,6 @@ export class TileViewer extends Scene {
         mapBounds.centerX !== undefined &&
         mapBounds.centerY !== undefined
       ) {
-        console.log("No saved position, centering camera on map");
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
         // Set default zoom since we're centering
         this.cameraController.setZoom(DEFAULT_ZOOM);
@@ -836,8 +763,6 @@ export class TileViewer extends Scene {
   }
 
   resetScene(resetCamera: boolean = true) {
-    console.log("Resetting scene");
-
     // First, store any data we need to pass to the new scene
     const data = {
       destinationZoneId: this.game.registry.get("destinationZoneId"),
@@ -847,31 +772,12 @@ export class TileViewer extends Scene {
       ),
     };
 
-    // Log the current camera state for debugging
-    const savedCameraState = this.game.registry.get("overworldCameraState");
-    console.log("Camera state before reset:", savedCameraState);
-
     // Only reset the camera if explicitly requested AND we're not trying to preserve state
     const preservingCameraState =
       data.useOverworldSavedCamera === true || data.loadOverworld === true;
 
     if (resetCamera && !preservingCameraState && this.cameraController) {
-      console.log("Resetting camera during scene reset");
       this.cameraController.resetCamera();
-    } else if (preservingCameraState) {
-      console.log("Preserving camera state during scene reset");
-
-      // Verify we have a valid camera state
-      if (savedCameraState && savedCameraState.saved) {
-        console.log(
-          "Valid camera state found for preservation during reset:",
-          savedCameraState
-        );
-      } else {
-        console.warn(
-          "No valid camera state found for preservation during reset"
-        );
-      }
     }
 
     // Clean up resources
