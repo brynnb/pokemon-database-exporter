@@ -242,7 +242,7 @@ export class CameraController {
    * @param isOverworld Whether the current view is the overworld
    */
   setViewMode(isOverworld: boolean) {
-    // Only save the camera state if we're switching from overworld to zone view
+    // Only save the camera state if we're switching from overworld to map view
     if (this.isOverworld && !isOverworld) {
       // Check if we already have a saved state in the registry
       const existingState = this.scene.game.registry.get(
@@ -268,9 +268,9 @@ export class CameraController {
     if (isOverworld) {
       // Don't set zoom here as we'll restore it in loadOverworldData
     } else {
-      // Always use the default zoom for zone views
+      // Always use the default zoom for map views
       this.setZoom(NON_OVERWORLD_ZOOM);
-      // Reset camera position for zone views
+      // Reset camera position for map views
       this.mainCamera.setScroll(0, 0);
     }
   }
@@ -292,7 +292,7 @@ export class CameraController {
       // Also clear from global registry
       this.scene.game.registry.remove("overworldCameraState");
     } else {
-      // In zone view, just reset the zoom but DON'T clear the saved overworld state
+      // In map view, just reset the zoom but DON'T clear the saved overworld state
       this.setZoom(NON_OVERWORLD_ZOOM);
     }
 

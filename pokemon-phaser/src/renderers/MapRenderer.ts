@@ -22,7 +22,7 @@ export class MapRenderer {
 
     // Render each tile
     for (const tile of tiles) {
-      const { x, y, tile_image_id, zone_id } = tile;
+      const { x, y, tile_image_id, map_id } = tile;
 
       // Calculate position
       const posX = x * TILE_SIZE;
@@ -36,9 +36,9 @@ export class MapRenderer {
       tileSprite.setOrigin(0, 0);
       tileSprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
 
-      // Store the tile_image_id and zone_id for later reference
+      // Store the tile_image_id and map_id for later reference
       (tileSprite as any).tileImageId = tile_image_id;
-      (tileSprite as any).zoneId = zone_id;
+      (tileSprite as any).mapId = map_id;
 
       // Add to container
       this.mapContainer.add(tileSprite);

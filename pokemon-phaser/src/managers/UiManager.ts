@@ -105,7 +105,7 @@ export class UiManager {
     pointer: Phaser.Input.Pointer,
     tiles: any[],
     items: any[],
-    zoneInfo: any,
+    mapInfo: any,
     getWorldPoint: (x: number, y: number) => Phaser.Math.Vector2,
     warps: any[] = []
   ) {
@@ -119,9 +119,9 @@ export class UiManager {
     // Update the tile highlight position
     this.updateTileHighlight(tileX, tileY);
 
-    // Check if we have zone info
-    if (!zoneInfo) {
-      this.infoText.setText("No zone info available");
+    // Check if we have map info
+    if (!mapInfo) {
+      this.infoText.setText("No map info available");
       this.updateElementPositions();
       return;
     }
@@ -129,7 +129,7 @@ export class UiManager {
     // Build info text
     let info = `Tile: (${tileX}, ${tileY})`;
 
-    // In overworld mode, find the zone for this tile
+    // In overworld mode, find the map for this tile
     const tile = tiles.find((t) => t.x === tileX && t.y === tileY);
 
     // Always show local coordinates, displaying "none" when not available
@@ -139,22 +139,22 @@ export class UiManager {
       info += `\nLocal Coords: none`;
     }
 
-    // Always show Zone ID, displaying "none" when not available
-    if (tile && tile.zone_id) {
-      info += `\nZone ID: ${tile.zone_id}`;
+    // Always show Map ID, displaying "none" when not available
+    if (tile && tile.map_id) {
+      info += `\nMap ID: ${tile.map_id}`;
 
-      // Use zone_name directly from the tile object
-      if (tile.zone_name) {
-        info += ` (${tile.zone_name})`;
+      // Use map_name directly from the tile object
+      if (tile.map_name) {
+        info += ` (${tile.map_name})`;
       } else {
         info += ` (no name)`;
       }
     } else {
-      info += `\nZone ID: none`;
+      info += `\nMap ID: none`;
     }
 
-    if (zoneInfo.tileset_id) {
-      info += `\nTileset ID: ${zoneInfo.tileset_id}`;
+    if (mapInfo.tileset_id) {
+      info += `\nTileset ID: ${mapInfo.tileset_id}`;
     }
 
     // Always display Tile ID, showing "n/a" when no tile is found
@@ -173,7 +173,7 @@ export class UiManager {
     const warp = warps.find((w) => w.x === tileX && w.y === tileY);
     if (warp) {
       info += `\nWarp: (${warp.x}, ${warp.y})`;
-      info += `\nDestination: Zone ${warp.destination_map} at (${warp.destination_x}, ${warp.destination_y})`;
+      info += `\nDestination: Map ${warp.destination_map} at (${warp.destination_x}, ${warp.destination_y})`;
     }
 
     // Update the info text
@@ -183,7 +183,7 @@ export class UiManager {
     this.updateElementPositions();
 
     // Update the mode text with the current view name
-    this.setModeText(`View: ${zoneInfo.name}`);
+    this.setModeText(`View: ${mapInfo.name}`);
   }
 
   updateTileHighlight(tileX: number, tileY: number) {

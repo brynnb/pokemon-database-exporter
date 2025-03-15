@@ -14,7 +14,7 @@ export const fetchTileImages = async (): Promise<any[]> => {
   return await response.json();
 };
 
-export const fetchTiles = async (zoneId: number): Promise<any[]> => {
-  const response = await fetch(`${API_BASE_URL}/tiles/${zoneId}`);
+export const fetchTiles = async (mapId: number): Promise<any[]> => {
+  const response = await fetch(`${API_BASE_URL}/tiles/${mapId}`);
   return await response.json();
 };

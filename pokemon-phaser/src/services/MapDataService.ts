@@ -1,24 +1,24 @@
 import {
   fetchItems,
   fetchNPCs,
-  fetchOverworldZones,
+  fetchOverworldMaps,
   fetchTileImages,
   fetchTiles,
   fetchWarps,
-  fetchZoneInfo,
+  fetchMapInfo,
 } from "../api";
 
 export class MapDataService {
-  async fetchZoneInfo(zoneId: number) {
-    return await fetchZoneInfo(zoneId);
+  async fetchMapInfo(mapId: number) {
+    return await fetchMapInfo(mapId);
   }
 
-  async fetchTiles(zoneId: number) {
-    return await fetchTiles(zoneId);
+  async fetchTiles(mapId: number) {
+    return await fetchTiles(mapId);
   }
 
-  async fetchOverworldZones() {
-    return await fetchOverworldZones();
+  async fetchOverworldMaps() {
+    return await fetchOverworldMaps();
   }
 
   async fetchItems() {

@@ -8,5 +8,5 @@ export const DEFAULT_ZOOM = 0.5; // Default zoom level
 export const ZOOM_STEP = 0.025; // How much to zoom in/out per scroll
 
 // Default settings
-export const DEFAULT_ZONE_ID = 15; // Default zone ID to display
+export const DEFAULT_MAP_ID = 15; // Default map ID to display
 export const OVERWORLD_MODE = true; // Always show overworld by default

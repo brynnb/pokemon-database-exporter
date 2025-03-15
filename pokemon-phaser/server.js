@@ -151,12 +151,12 @@ app.get("/api/tile-images", (req, res) => {
   });
 });
 
-// API endpoint to get tiles for a specific zone
-app.get("/api/tiles/:zoneId", (req, res) => {
-  const zoneId = req.params.zoneId;
+// API endpoint to get tiles for a specific map
+app.get("/api/tiles/:mapId", (req, res) => {
+  const mapId = req.params.mapId;
   db.all(
-    "SELECT t.id, t.x, t.y, t.tile_image_id, t.local_x, t.local_y, t.zone_id, z.name as zone_name FROM tiles t JOIN zones z ON t.zone_id = z.id WHERE t.zone_id = ?",
-    [zoneId],
+    "SELECT t.id, t.x, t.y, t.tile_image_id, t.local_x, t.local_y, t.map_id, m.name as map_name FROM tiles t JOIN maps m ON t.map_id = m.id WHERE t.map_id = ?",
+    [mapId],
     (err, rows) => {
       if (err) {
         res.status(500).json({ error: err.message });
@@ -167,12 +167,12 @@ app.get("/api/tiles/:zoneId", (req, res) => {
   );
 });
 
-// API endpoint to get zone info
-app.get("/api/zone-info/:zoneId", (req, res) => {
-  const zoneId = req.params.zoneId;
+// API endpoint to get map info
+app.get("/api/map-info/:mapId", (req, res) => {
+  const mapId = req.params.mapId;
   db.get(
-    "SELECT id, name, tileset_id, is_overworld FROM zones WHERE id = ?",
-    [zoneId],
+    "SELECT id, name, tileset_id, is_overworld FROM maps WHERE id = ?",
+    [mapId],
     (err, row) => {
       if (err) {
         res.status(500).json({ error: err.message });
@@ -186,11 +186,11 @@ app.get("/api/zone-info/:zoneId", (req, res) => {
 // API endpoint to get items
 app.get("/api/items", (req, res) => {
   db.all(
-    `SELECT o.id, o.x, o.y, o.zone_id, o.item_id, i.name, i.short_name as description 
+    `SELECT o.id, o.x, o.y, o.map_id, o.item_id, i.name, i.short_name as description 
      FROM objects o
      JOIN items i ON o.item_id = i.id
-     JOIN zones z ON o.zone_id = z.id
-     WHERE o.object_type = 'item' AND z.is_overworld = 1`,
+     JOIN maps m ON o.map_id = m.id
+     WHERE o.object_type = 'item' AND m.is_overworld = 1`,
     [],
     (err, rows) => {
       if (err) {
@@ -205,10 +205,10 @@ app.get("/api/items", (req, res) => {
 // API endpoint to get NPCs
 app.get("/api/npcs", (req, res) => {
   db.all(
-    `SELECT o.id, o.x, o.y, o.zone_id, o.spriteset_id as sprite_id, o.name 
+    `SELECT o.id, o.x, o.y, o.map_id, o.spriteset_id as sprite_id, o.name 
      FROM objects o
-     JOIN zones z ON o.zone_id = z.id
-     WHERE o.object_type = 'npc' AND z.is_overworld = 1`,
+     JOIN maps m ON o.map_id = m.id
+     WHERE o.object_type = 'npc' AND m.is_overworld = 1`,
     [],
     (err, rows) => {
       if (err) {
@@ -220,10 +220,10 @@ app.get("/api/npcs", (req, res) => {
   );
 });
 
-// API endpoint to get overworld zones
-app.get("/api/overworld-zones", (req, res) => {
+// API endpoint to get overworld maps
+app.get("/api/overworld-maps", (req, res) => {
   db.all(
-    "SELECT id, name FROM zones WHERE is_overworld = 1",
+    "SELECT id, name FROM maps WHERE is_overworld = 1",
     [],
     (err, rows) => {
       if (err) {
@@ -238,11 +238,11 @@ app.get("/api/overworld-zones", (req, res) => {
 // API endpoint to get warps
 app.get("/api/warps", (req, res) => {
   db.all(
-    `SELECT w.id, w.source_zone_id as zone_id, w.x, w.y, 
-            w.destination_zone_id, w.destination_map, w.destination_x, w.destination_y
+    `SELECT w.id, w.source_map_id as map_id, w.x, w.y, 
+            w.destination_map_id, w.destination_map, w.destination_x, w.destination_y
      FROM warps w
-     JOIN zones z ON w.source_zone_id = z.id
-     WHERE w.x IS NOT NULL AND w.y IS NOT NULL AND z.is_overworld = 1`,
+     JOIN maps m ON w.source_map_id = m.id
+     WHERE w.x IS NOT NULL AND w.y IS NOT NULL AND m.is_overworld = 1`,
     [],
     (err, rows) => {
       if (err) {
