@@ -38,6 +38,14 @@ function runCommand(command) {
 async function runExports() {
   log("Starting Pokemon data exports...");
 
+  // Run map exports first
+  const mapsSuccess = runCommand("python3 export_scripts/export_map.py");
+  if (!mapsSuccess) {
+    log("Map export failed");
+    return;
+  }
+  log("Map export successful");
+
   // Run item exports
   const itemsSuccess = runCommand("python3 export_scripts/export_items.py");
   if (!itemsSuccess) {
@@ -62,23 +70,13 @@ async function runExports() {
   }
   log("Pokemon export successful");
 
-  // Run map exports
-  const mapsSuccess = runCommand("python3 export_scripts/export_map.py");
-  if (!mapsSuccess) {
-    log("Map export failed");
+  // Run create tiles instead of zones and tiles
+  const tilesSuccess = runCommand("python3 export_scripts/create_tiles.py");
+  if (!tilesSuccess) {
+    log("Create tiles failed");
     return;
   }
-  log("Map export successful");
-
-  // Run create zones and tiles
-  const zonesAndTilesSuccess = runCommand(
-    "python3 export_scripts/create_zones_and_tiles.py"
-  );
-  if (!zonesAndTilesSuccess) {
-    log("Create zones and tiles failed");
-    return;
-  }
-  log("Create zones and tiles successful");
+  log("Create tiles successful");
 
   // Run update overworld tiles
   const overworldTilesSuccess = runCommand(
@@ -90,15 +88,15 @@ async function runExports() {
   }
   log("Update overworld tiles successful");
 
-  // Run update zone coordinates
-  const zoneCoordinatesSuccess = runCommand(
-    "python3 export_scripts/update_zone_coordinates.py"
+  // Run update map coordinates instead of zone coordinates
+  const mapCoordinatesSuccess = runCommand(
+    "python3 export_scripts/update_map_coordinates.py"
   );
-  if (!zoneCoordinatesSuccess) {
-    log("Update zone coordinates failed");
+  if (!mapCoordinatesSuccess) {
+    log("Update map coordinates failed");
     return;
   }
-  log("Update zone coordinates successful");
+  log("Update map coordinates successful");
 
   // Run warps exports
   const warpsSuccess = runCommand("python3 export_scripts/export_warps.py");

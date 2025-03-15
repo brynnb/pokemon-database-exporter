@@ -139,9 +139,9 @@ export class UiManager {
       info += `\nLocal Coords: none`;
     }
 
-    // Always show Zone ID, displaying "none" when not available
-    if (tile && tile.zone_id) {
-      info += `\nZone ID: ${tile.zone_id}`;
+    // Always show Map ID, displaying "none" when not available
+    if (tile && tile.map_id) {
+      info += `\nMap ID: ${tile.map_id}`;
 
       // Use zone_name directly from the tile object
       if (tile.zone_name) {
@@ -149,8 +149,6 @@ export class UiManager {
       } else {
         info += ` (no name)`;
       }
-    } else {
-      info += `\nZone ID: none`;
     }
 
     if (zoneInfo.tileset_id) {

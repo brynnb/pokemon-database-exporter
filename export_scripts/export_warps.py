@@ -43,14 +43,12 @@ def create_database():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source_map TEXT NOT NULL,
         source_map_id INTEGER,
-        source_zone_id INTEGER,
         source_x INTEGER NOT NULL,
         source_y INTEGER NOT NULL,
         x INTEGER,
         y INTEGER,
         destination_map TEXT NOT NULL,
         destination_map_id INTEGER,
-        destination_zone_id INTEGER,
         destination_x INTEGER,
         destination_y INTEGER,
         destination_warp_id INTEGER NOT NULL
@@ -92,40 +90,7 @@ def extract_map_id_from_header(map_name):
     return None
 
 
-def get_zone_id_for_map(map_name, cursor):
-    """Get zone ID for a map from the zones table"""
-    # Try exact match first
-    cursor.execute("SELECT id FROM zones WHERE name = ?", (map_name,))
-    result = cursor.fetchone()
-    if result:
-        return result[0]
-
-    # Try case-insensitive match
-    cursor.execute("SELECT id FROM zones WHERE LOWER(name) = LOWER(?)", (map_name,))
-    result = cursor.fetchone()
-    if result:
-        return result[0]
-
-    # Try with different case variations
-    variations = [
-        map_name,
-        map_name.lower(),
-        map_name.upper(),
-        map_name.capitalize(),
-        map_name.replace("F", "f"),  # For floor numbers like 3F -> 3f
-        map_name.replace("f", "F"),  # For floor numbers like 3f -> 3F
-    ]
-
-    for variation in variations:
-        cursor.execute("SELECT id FROM zones WHERE name = ?", (variation,))
-        result = cursor.fetchone()
-        if result:
-            return result[0]
-
-    return None
-
-
-def parse_warp_events(content, map_name, cursor, map_to_zone_id, map_formats):
+def parse_warp_events(content, map_name, cursor, map_to_map_id, map_formats):
     """Parse warp events from the map object file"""
     warps = []
 
@@ -145,7 +110,7 @@ def parse_warp_events(content, map_name, cursor, map_to_zone_id, map_formats):
     warp_matches = re.finditer(warp_pattern, warp_section)
 
     map_id = extract_map_id_from_header(map_name)
-    zone_id = get_zone_id_from_mapping(map_name, map_to_zone_id)
+    source_map_id = get_map_id_from_mapping(map_name, map_to_map_id)
 
     for i, match in enumerate(warp_matches):
         x = int(match.group(1))
@@ -155,21 +120,19 @@ def parse_warp_events(content, map_name, cursor, map_to_zone_id, map_formats):
 
         # Extract destination map ID if it's not LAST_MAP
         destination_map_id = None
-        destination_zone_id = None
         if destination != "LAST_MAP":
             destination_map_id = extract_map_id_from_header(destination)
-            destination_zone_id = get_zone_id_from_mapping(destination, map_to_zone_id)
+            if not destination_map_id:
+                destination_map_id = get_map_id_from_mapping(destination, map_to_map_id)
 
         warps.append(
             {
                 "source_map": map_name,
                 "source_map_id": map_id,
-                "source_zone_id": zone_id,
                 "source_x": x,
                 "source_y": y,
                 "destination_map": destination,
                 "destination_map_id": destination_map_id,
-                "destination_zone_id": destination_zone_id,
                 "destination_warp_id": destination_warp_id,
                 "destination_x": None,  # Will be filled in later
                 "destination_y": None,  # Will be filled in later
@@ -358,7 +321,7 @@ def find_destination_coordinates(source_map, destination_map, destination_warp_i
     return None, None
 
 
-def resolve_last_map_warps(all_warps, cursor, map_to_zone_id, map_formats):
+def resolve_last_map_warps(all_warps, cursor, map_to_map_id, map_formats):
     """Resolve LAST_MAP references in warps"""
     resolved_warps = []
     resolved_count = 0
@@ -372,7 +335,6 @@ def resolve_last_map_warps(all_warps, cursor, map_to_zone_id, map_formats):
                 incoming_warp = incoming_warps[0]
                 warp["destination_map"] = incoming_warp["source_map"]
                 warp["destination_map_id"] = incoming_warp["source_map_id"]
-                warp["destination_zone_id"] = incoming_warp["source_zone_id"]
                 warp["destination_x"] = incoming_warp["source_x"]
                 warp["destination_y"] = incoming_warp["source_y"]
                 warp["destination_warp_id"] = 0  # Default warp ID
@@ -392,9 +354,6 @@ def resolve_last_map_warps(all_warps, cursor, map_to_zone_id, map_formats):
                         # Use parent location as destination
                         warp["destination_map"] = parent_map
                         warp["destination_map_id"] = map_formats.get(parent_map)
-                        warp["destination_zone_id"] = get_zone_id_from_mapping(
-                            parent_map, map_to_zone_id
-                        )
                         warp["destination_x"] = 0  # Default coordinates
                         warp["destination_y"] = 0
                         warp["destination_warp_id"] = 0  # Default warp ID
@@ -429,28 +388,28 @@ def main():
         # If maps table doesn't exist, continue without it
         print("Warning: 'maps' table not found, continuing without map formats")
 
-    # Create a map name to zone ID mapping
-    map_to_zone_id = {}
-    cursor.execute("SELECT id, name FROM zones")
-    for zone_id, zone_name in cursor.fetchall():
+    # Create a map name to map ID mapping
+    map_to_map_id = {}
+    cursor.execute("SELECT id, name FROM maps")
+    for map_id, map_name in cursor.fetchall():
         # Store multiple case variations
-        map_to_zone_id[zone_name] = zone_id
-        map_to_zone_id[zone_name.lower()] = zone_id
-        map_to_zone_id[zone_name.upper()] = zone_id
+        map_to_map_id[map_name] = map_id
+        map_to_map_id[map_name.lower()] = map_id
+        map_to_map_id[map_name.upper()] = map_id
 
         # Handle floor number variations
-        if "F" in zone_name:
-            map_to_zone_id[zone_name.replace("F", "f")] = zone_id
-        if "f" in zone_name:
-            map_to_zone_id[zone_name.replace("f", "F")] = zone_id
+        if "F" in map_name:
+            map_to_map_id[map_name.replace("F", "f")] = map_id
+        if "f" in map_name:
+            map_to_map_id[map_name.replace("f", "F")] = map_id
 
         # Convert CamelCase to UPPER_CASE_WITH_UNDERSCORES
         upper_with_underscores = (
-            "".join(["_" + c if c.isupper() else c for c in zone_name])
+            "".join(["_" + c if c.isupper() else c for c in map_name])
             .upper()
             .lstrip("_")
         )
-        map_to_zone_id[upper_with_underscores] = zone_id
+        map_to_map_id[upper_with_underscores] = map_id
 
     # Get all map files
     map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
@@ -470,17 +429,12 @@ def main():
         if not map_id:
             map_id = extract_map_id_from_header(map_name)
 
-        # Get zone ID for this map
-        zone_id = get_zone_id_for_map(map_name, cursor)
-
         # Read the map file
         with open(file_path, "r") as f:
             content = f.read()
 
         # Parse warp events
-        warps = parse_warp_events(
-            content, map_name, cursor, map_to_zone_id, map_formats
-        )
+        warps = parse_warp_events(content, map_name, cursor, map_to_map_id, map_formats)
         all_warps.extend(warps)
         processed_count += 1
 
@@ -488,7 +442,7 @@ def main():
 
     # Resolve LAST_MAP references
     resolved_warps = resolve_last_map_warps(
-        all_warps, cursor, map_to_zone_id, map_formats
+        all_warps, cursor, map_to_map_id, map_formats
     )
 
     # Insert warps into database
@@ -497,33 +451,27 @@ def main():
         # Calculate global coordinates for overworld warps
         x = None
         y = None
-        if warp["source_zone_id"]:
-            # Get the global coordinates of the zone (top-left corner)
-            zone_x, zone_y = get_zone_global_coordinates(cursor, warp["source_zone_id"])
-            if zone_x is not None and zone_y is not None:
-                # Apply the zone offset to the warp coordinates
-                x = zone_x + warp["source_x"]
-                y = zone_y + warp["source_y"]
+        if warp["source_map_id"]:
+            # Use the warp's source x,y directly
+            x = warp["source_x"]
+            y = warp["source_y"]
 
         cursor.execute(
             """
             INSERT INTO warps (
-                source_map, source_map_id, source_zone_id, source_x, source_y,
-                x, y, destination_map, destination_map_id, destination_zone_id, 
-                destination_x, destination_y, destination_warp_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_map, source_map_id, source_x, source_y,
+                x, y, destination_map, destination_map_id, destination_x, destination_y, destination_warp_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 warp["source_map"],
                 warp["source_map_id"],
-                warp["source_zone_id"],
                 warp["source_x"],
                 warp["source_y"],
                 x,
                 y,
                 warp["destination_map"],
                 warp["destination_map_id"],
-                warp["destination_zone_id"],
                 warp["destination_x"],
                 warp["destination_y"],
                 warp["destination_warp_id"],
@@ -578,23 +526,35 @@ def convert_map_name_to_constant(map_name):
     return constant.upper()
 
 
-def get_zone_global_coordinates(cursor, zone_id):
-    """Get the global coordinates of a zone (top-left corner)"""
-    if not zone_id:
-        return None, None
+def get_map_id_from_mapping(map_name, map_to_map_id):
+    """Get map ID for a map from the mapping"""
+    # Try exact match
+    if map_name in map_to_map_id:
+        return map_to_map_id[map_name]
 
-    cursor.execute(
-        """
-        SELECT MIN(x), MIN(y) 
-        FROM tiles 
-        WHERE zone_id = ?
-        """,
-        (zone_id,),
+    # Try lowercase
+    if map_name.lower() in map_to_map_id:
+        return map_to_map_id[map_name.lower()]
+
+    # Try uppercase
+    if map_name.upper() in map_to_map_id:
+        return map_to_map_id[map_name.upper()]
+
+    # Try converting CamelCase to UPPER_CASE_WITH_UNDERSCORES
+    upper_with_underscores = (
+        "".join(["_" + c if c.isupper() else c for c in map_name]).upper().lstrip("_")
     )
-    result = cursor.fetchone()
-    if result:
-        return result[0], result[1]
-    return None, None
+    if upper_with_underscores in map_to_map_id:
+        return map_to_map_id[upper_with_underscores]
+
+    # Try converting UPPER_CASE_WITH_UNDERSCORES to CamelCase
+    if "_" in map_name:
+        parts = map_name.split("_")
+        camel_case = "".join(part.capitalize() for part in parts)
+        if camel_case in map_to_map_id:
+            return map_to_map_id[camel_case]
+
+    return None
 
 
 if __name__ == "__main__":

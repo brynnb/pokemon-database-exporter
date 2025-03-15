@@ -76,7 +76,8 @@ def create_database():
         north_connection INTEGER,
         south_connection INTEGER,
         west_connection INTEGER,
-        east_connection INTEGER
+        east_connection INTEGER,
+        is_overworld INTEGER NOT NULL DEFAULT 0
     )
     """
     )
@@ -838,8 +839,8 @@ def main():
         # Insert map data even if some fields are missing
         cursor.execute(
             """
-            INSERT INTO maps (id, name, width, height, tileset_id, blk_data)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO maps (id, name, width, height, tileset_id, blk_data, is_overworld)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 map_id,
@@ -848,6 +849,7 @@ def main():
                 map_info["height"],
                 tileset_id,
                 blk_data,
+                1 if tileset_id == 0 else 0,  # Set is_overworld to 1 if tileset_id is 0
             ),
         )
         map_count += 1

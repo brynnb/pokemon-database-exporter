@@ -5,45 +5,45 @@ DB_PATH = "pokemon.db"
 
 
 def update_overworld_tiles():
-    """Update tiles to mark them as overworld based on their zone's is_overworld flag"""
+    """Update tiles to mark them as overworld based on their map's is_overworld flag"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Get all zones marked as overworld
-    cursor.execute("SELECT id, name FROM zones WHERE is_overworld = 1")
-    overworld_zones = cursor.fetchall()
+    # Get all maps marked as overworld
+    cursor.execute("SELECT id, name FROM maps WHERE is_overworld = 1")
+    overworld_maps = cursor.fetchall()
 
-    if not overworld_zones:
-        print("No zones marked as overworld found in the database.")
+    if not overworld_maps:
+        print("No maps marked as overworld found in the database.")
         conn.close()
         return
 
-    print(f"Found {len(overworld_zones)} zones marked as overworld:")
-    for zone_id, zone_name in overworld_zones:
-        print(f"  - Zone {zone_id}: {zone_name}")
+    print(f"Found {len(overworld_maps)} maps marked as overworld:")
+    for map_id, map_name in overworld_maps:
+        print(f"  - Map {map_id}: {map_name}")
 
-    # Count tiles in overworld zones
+    # Count tiles in overworld maps
     cursor.execute(
         """
         SELECT COUNT(*) FROM tiles 
-        WHERE zone_id IN (SELECT id FROM zones WHERE is_overworld = 1)
+        WHERE map_id IN (SELECT id FROM maps WHERE is_overworld = 1)
         """
     )
     total_tiles = cursor.fetchone()[0]
 
     if total_tiles == 0:
-        print("No tiles found in overworld zones.")
+        print("No tiles found in overworld maps.")
         conn.close()
         return
 
-    print(f"Found {total_tiles} tiles in overworld zones.")
+    print(f"Found {total_tiles} tiles in overworld maps.")
 
     # Update tiles to mark them as overworld
     cursor.execute(
         """
         UPDATE tiles 
         SET is_overworld = 1 
-        WHERE zone_id IN (SELECT id FROM zones WHERE is_overworld = 1)
+        WHERE map_id IN (SELECT id FROM maps WHERE is_overworld = 1)
         """
     )
 

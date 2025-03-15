@@ -8,6 +8,7 @@ from pathlib import Path
 POKEMON_DATA_DIR = Path("pokemon-game-data/data/maps/objects")
 CONSTANTS_DIR = Path("pokemon-game-data/constants")
 MAP_HEADERS_DIR = Path("pokemon-game-data/data/maps/headers")
+ROOT_DIR = "pokemon-game-data"
 
 # Object types
 OBJECT_TYPE_BG = "sign"
@@ -15,11 +16,8 @@ OBJECT_TYPE_OBJECT = "npc"
 OBJECT_TYPE_ITEM = "item"
 
 
-def create_database():
+def create_database(cursor):
     """Create SQLite database and objects table"""
-    conn = sqlite3.connect("pokemon.db")
-    cursor = conn.cursor()
-
     # Drop existing objects table if it exists
     cursor.execute("DROP TABLE IF EXISTS objects")
 
@@ -29,7 +27,7 @@ def create_database():
     CREATE TABLE IF NOT EXISTS objects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        zone_id INTEGER NOT NULL,
+        map_id INTEGER NOT NULL,
         object_type TEXT NOT NULL,
         x INTEGER,
         y INTEGER,
@@ -41,93 +39,11 @@ def create_database():
         action_type TEXT,
         action_direction TEXT,
         item_id INTEGER,
-        FOREIGN KEY (zone_id) REFERENCES zones (id),
+        FOREIGN KEY (map_id) REFERENCES maps (id),
         FOREIGN KEY (item_id) REFERENCES items (id)
     )
     """
     )
-
-    conn.commit()
-    return conn, cursor
-
-
-def get_all_zones(cursor):
-    """Get all zones from the database"""
-    cursor.execute("SELECT id, name FROM zones")
-    return {name: id for id, name in cursor.fetchall()}
-
-
-def create_map_to_zone_mapping(cursor):
-    """Create a mapping between map object file names and zone names"""
-    # Get all zones from the database
-    zones = get_all_zones(cursor)
-
-    # Create a mapping dictionary
-    map_to_zone = {}
-
-    # Direct mappings for cities, towns, and routes
-    for zone_name, zone_id in zones.items():
-        # For cities, towns, and routes, the map file name is likely the same as the zone name
-        map_to_zone[zone_name] = zone_id
-
-    # Add special mappings for buildings and areas that might have different naming conventions
-    # This is a simplified approach - in a real implementation, you'd need to analyze all map names
-    # and create a more comprehensive mapping
-
-    # Example mappings for buildings in cities
-    for zone_name in zones:
-        if (
-            "City" in zone_name
-            or "Town" in zone_name
-            or "Island" in zone_name
-            or "Plateau" in zone_name
-        ):
-            base_name = (
-                zone_name.replace("City", "")
-                .replace("Town", "")
-                .replace("Island", "")
-                .replace("Plateau", "")
-            )
-
-            # Map buildings to their respective cities/towns
-            map_to_zone[f"{base_name}Mart"] = zones[zone_name]
-            map_to_zone[f"{base_name}Pokecenter"] = zones[zone_name]
-            map_to_zone[f"{base_name}Gym"] = zones[zone_name]
-
-    # Add specific mappings for special areas
-    # Create a default zone for maps that don't have a direct mapping
-    default_zone_id = zones.get(
-        "PalletTown", 1
-    )  # Use PalletTown as default or fallback to ID 1
-
-    # Create a new zone entry for each unique map file that doesn't have a direct mapping
-    map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
-    for file_path in map_files:
-        map_name = parse_map_name_from_file(file_path)
-        if map_name not in map_to_zone:
-            # Check if this map is a building or area within a known zone
-            assigned = False
-            for zone_name, zone_id in zones.items():
-                # Try to match the map name with a zone name
-                if zone_name in map_name:
-                    map_to_zone[map_name] = zone_id
-                    assigned = True
-                    break
-
-            # If no match found, create a new entry in the zones table
-            if not assigned:
-                cursor.execute(
-                    "INSERT INTO zones (name, is_overworld) VALUES (?, 0)", (map_name,)
-                )
-                new_zone_id = cursor.lastrowid
-                map_to_zone[map_name] = new_zone_id
-
-    return map_to_zone
-
-
-def get_zone_id_for_map(map_name, map_to_zone):
-    """Get zone ID for a map using the mapping"""
-    return map_to_zone.get(map_name)
 
 
 def parse_map_name_from_file(file_path):
@@ -284,68 +200,260 @@ def parse_object_events(content, map_name, cursor):
     return objects
 
 
-def process_map_file(file_path, cursor, map_to_zone):
-    """Process a single map object file and extract all objects"""
-    map_name = parse_map_name_from_file(file_path)
+def create_map_name_to_id_mapping(cursor):
+    """Create a mapping between map names and map IDs"""
+    # Initialize empty maps dictionary and default_map_id
+    maps = {}
+    default_map_id = 1  # Default fallback
 
-    # Get zone ID for this map
-    zone_id = get_zone_id_for_map(map_name, map_to_zone)
-    if not zone_id:
-        print(f"Warning: Could not find zone ID for map {map_name}")
-        return []
+    try:
+        # Try to get all maps with their names
+        cursor.execute("SELECT id, name FROM maps")
+        maps = {name: id for id, name in cursor.fetchall()}
+    except sqlite3.OperationalError:
+        # If maps table doesn't exist, create a basic mapping
+        print("Warning: 'maps' table not found, creating fallback mapping")
+        # Create a simple mapping for common maps
+        common_maps = [
+            "PALLET_TOWN",
+            "VIRIDIAN_CITY",
+            "PEWTER_CITY",
+            "CERULEAN_CITY",
+            "VERMILION_CITY",
+            "LAVENDER_TOWN",
+            "CELADON_CITY",
+            "SAFFRON_CITY",
+            "FUCHSIA_CITY",
+            "CINNABAR_ISLAND",
+            "INDIGO_PLATEAU",
+        ]
+        # Assign IDs starting from 1
+        for i, map_name in enumerate(common_maps, 1):
+            maps[map_name] = i
 
-    with open(file_path, "r") as f:
-        content = f.read()
+    # Create a mapping from map names to map IDs
+    map_to_map = {}
 
-    # Parse different types of objects
-    signs = parse_bg_events(content, map_name)
-    objects = parse_object_events(content, map_name, cursor)
+    # Basic map name to ID mapping
+    for map_name, map_id in maps.items():
+        map_formatted = format_map_name(map_name)
+        map_to_map[map_formatted] = map_id
 
-    # Combine all objects and add zone_id
-    all_objects = signs + objects
-    for obj in all_objects:
-        obj["zone_id"] = zone_id
+    # Add some special case mappings
+    default_map_id = maps.get(
+        "PALLET_TOWN", 1
+    )  # Default to Pallet Town if we can't find a match
+
+    # Process all map names to create variants for better matching
+    for map_name, map_id in maps.items():
+        # Convert to CamelCase (e.g., "PALLET_TOWN" -> "PalletTown")
+        words = map_name.split("_")
+        camel_case = "".join(word.capitalize() for word in words)
+        map_to_map[camel_case] = map_id
+
+    # Handle special case for FuchsiaCity vs FuschiaCity typo
+    if "FuchsiaCity" in map_to_map:
+        new_map_id = map_to_map["FuchsiaCity"]
+        map_to_map["FuschiaCity"] = new_map_id
+
+    return map_to_map, default_map_id
+
+
+def get_map_id_for_map(map_name, map_to_map):
+    """Get map ID for a map using the mapping"""
+    return map_to_map.get(map_name)
+
+
+def format_map_name(map_name):
+    """Format map name for consistent matching"""
+    return map_name.replace("_", " ").title().replace(" ", "")
+
+
+def parse_objects(content, map_name, map_info):
+    """Parse all objects from a map file's content"""
+    objects = {"signs": [], "npcs": [], "items": []}
+
+    # Parse background events (signs)
+    bg_section_match = re.search(
+        r"def_bg_events(.*?)(?:def_object_events|\Z)", content, re.DOTALL
+    )
+    if bg_section_match:
+        bg_section = bg_section_match.group(1)
+        bg_pattern = r"bg_event\s+(\d+),\s+(\d+),\s+(\w+)"
+        for i, match in enumerate(re.finditer(bg_pattern, bg_section)):
+            x = int(match.group(1))
+            y = int(match.group(2))
+            text_id = match.group(3)
+            objects["signs"].append(
+                {
+                    "name": f"{map_name}_SIGN_{i+1}",
+                    "object_type": OBJECT_TYPE_BG,
+                    "x": None,
+                    "y": None,
+                    "local_x": x,
+                    "local_y": y,
+                    "text": text_id,
+                    "sprite_name": "SPRITE_SIGN",
+                }
+            )
+
+    # Parse object events (NPCs and items)
+    object_section_match = re.search(
+        r"def_object_events(.*?)(?:def_warps_to|\Z)", content, re.DOTALL
+    )
+    if object_section_match:
+        object_section = object_section_match.group(1)
+        object_pattern = r"object_event\s+(\d+),\s+(\d+),\s+(\w+),\s+(\w+),\s+(\w+),\s+(\w+)(?:,\s+(\w+)(?:,\s+(\w+))?)?"
+
+        for i, match in enumerate(re.finditer(object_pattern, object_section)):
+            x = int(match.group(1))
+            y = int(match.group(2))
+            sprite = match.group(3)
+            action_type = match.group(4)
+            action_direction = match.group(5)
+            text_id = match.group(6)
+            item_or_trainer = (
+                match.group(7) if len(match.groups()) >= 7 and match.group(7) else None
+            )
+
+            # Determine if this is an item or NPC
+            object_type = OBJECT_TYPE_OBJECT
+            item_id = None
+            item_list = map_info.get("items", {})
+
+            if sprite == "SPRITE_POKE_BALL" and item_or_trainer:
+                object_type = OBJECT_TYPE_ITEM
+                item_id = item_list.get(item_or_trainer)
+            elif (
+                "ITEM" in sprite
+                or "BALL" in sprite
+                or "POTION" in sprite
+                or "FOSSIL" in sprite
+            ):
+                object_type = OBJECT_TYPE_ITEM
+
+            if object_type == OBJECT_TYPE_ITEM:
+                objects["items"].append(
+                    {
+                        "name": f"{map_name}_ITEM_{i+1}",
+                        "object_type": object_type,
+                        "x": None,
+                        "y": None,
+                        "local_x": x,
+                        "local_y": y,
+                        "spriteset_id": None,
+                        "sprite_name": sprite,
+                        "text": text_id,
+                        "action_type": action_type,
+                        "action_direction": action_direction,
+                        "item_id": item_id,
+                    }
+                )
+            else:
+                objects["npcs"].append(
+                    {
+                        "name": f"{map_name}_NPC_{i+1}",
+                        "object_type": object_type,
+                        "x": None,
+                        "y": None,
+                        "local_x": x,
+                        "local_y": y,
+                        "spriteset_id": None,
+                        "sprite_name": sprite,
+                        "text": text_id,
+                        "action_type": action_type,
+                        "action_direction": action_direction,
+                        "item_id": None,
+                    }
+                )
+
+    return objects
+
+
+def get_all_objects(objects_dict, extra_objects, map_name):
+    """Combine all object types into a single list"""
+    all_objects = []
+
+    # Add signs
+    for sign in objects_dict.get("signs", []):
+        all_objects.append(sign)
+
+    # Add NPCs
+    for npc in objects_dict.get("npcs", []):
+        all_objects.append(npc)
+
+    # Add items
+    for item in objects_dict.get("items", []):
+        all_objects.append(item)
+
+    # Add any extra objects
+    for obj in extra_objects:
+        all_objects.append(obj)
 
     return all_objects
 
 
 def main():
-    # Create database
-    conn, cursor = create_database()
+    """Main function to process and export all objects"""
+    # Connect to the database
+    conn = sqlite3.connect("../pokemon.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    # Create map to zone mapping
-    map_to_zone = create_map_to_zone_mapping(cursor)
+    # Create the table
+    create_database(cursor)
 
-    # Get all map object files
-    map_files = list(POKEMON_DATA_DIR.glob("*.asm"))
-    print(f"Found {len(map_files)} map files")
+    # Get map to map ID mappings
+    map_to_map, default_map_id = create_map_name_to_id_mapping(cursor)
 
-    # Process each map file
-    all_objects = []
-    processed_count = 0
+    # Process all objects from object scripts
+    all_objects_list = []
+    objects_path = os.path.join(ROOT_DIR, "data", "maps", "objects")
+    map_info = {}
 
-    for file_path in map_files:
-        objects = process_map_file(file_path, cursor, map_to_zone)
-        all_objects.extend(objects)
-        processed_count += 1
+    for filename in os.listdir(objects_path):
+        if not filename.endswith(".asm"):
+            continue
 
-    print(f"Processed {processed_count} map files, found {len(all_objects)} objects")
+        # Extract map name from filename (e.g., ViridianCityObjects.asm -> ViridianCity)
+        map_name = filename.replace("Objects.asm", "")
 
-    # Insert objects into database
-    signs_count = 0
-    sprites_count = 0
+        file_path = os.path.join(objects_path, filename)
+        with open(file_path, "r") as f:
+            content = f.read()
 
-    for obj in all_objects:
+        # Process objects for this map
+        objects = parse_objects(content, map_name, map_info)
+
+        # Get map ID for this map
+        map_id = get_map_id_for_map(map_name, map_to_map)
+        if not map_id:
+            # Try alternate formats
+            map_id = get_map_id_for_map(map_name.upper(), map_to_map)
+
+        if not map_id:
+            print(f"Warning: Could not find map ID for '{map_name}', using default")
+            map_id = default_map_id
+
+        # Combine all objects and add map_id
+        all_objects = get_all_objects(objects, [], map_name)
+        for obj in all_objects:
+            obj["map_id"] = map_id
+            all_objects_list.append(obj)
+
+    # Insert all objects
+    inserted_count = 0
+    for obj in all_objects_list:
         cursor.execute(
             """
         INSERT INTO objects (
-            name, zone_id, object_type, x, y, local_x, local_y,
+            name, map_id, object_type, x, y, local_x, local_y,
             spriteset_id, sprite_name, text, action_type, action_direction, item_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 obj.get("name"),
-                obj.get("zone_id"),
+                obj.get("map_id"),
                 obj.get("object_type"),
                 obj.get("x"),
                 obj.get("y"),
@@ -359,19 +467,13 @@ def main():
                 obj.get("item_id"),
             ),
         )
-
-        if obj.get("object_type") == "sign":
-            signs_count += 1
-        else:
-            sprites_count += 1
+        inserted_count += 1
 
     # Commit changes and close connection
     conn.commit()
     conn.close()
 
-    print(
-        f"Successfully exported {len(all_objects)} objects to pokemon.db ({signs_count} signs, {sprites_count} sprites)"
-    )
+    print(f"Successfully exported {inserted_count} objects to pokemon.db")
     print(
         "Note: Run update_object_coordinates.py to update global coordinates (x, y) based on local coordinates (local_x, local_y)"
     )

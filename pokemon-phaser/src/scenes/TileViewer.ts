@@ -202,11 +202,11 @@ export class TileViewer extends Scene {
     this.events.once("warpClicked", async (warp: any) => {
       console.log("Warp clicked:", warp);
 
-      if (warp && warp.destination_zone_id) {
+      if (warp && warp.destination_map_id) {
         try {
           // Get the zone name for the destination
           const zoneInfo = await this.mapDataService.fetchZoneInfo(
-            warp.destination_zone_id
+            warp.destination_map_id
           );
 
           // Show loading text
@@ -215,7 +215,7 @@ export class TileViewer extends Scene {
           if (zoneInfo && zoneInfo.name) {
             this.uiManager.setLoadingText(`Warping to ${zoneInfo.name}...`);
             console.log(
-              `Warping to ${zoneInfo.name} (Zone ${warp.destination_zone_id})`
+              `Warping to ${zoneInfo.name} (Map ${warp.destination_map_id})`
             );
 
             // Always save the overworld camera state if we're in overworld mode
@@ -227,7 +227,7 @@ export class TileViewer extends Scene {
             // Store the destination zone ID in registry
             this.game.registry.set(
               "destinationZoneId",
-              warp.destination_zone_id
+              warp.destination_map_id
             );
 
             // Force a complete scene restart to ensure clean state
@@ -235,23 +235,23 @@ export class TileViewer extends Scene {
             this.resetScene(false);
           } else {
             console.warn(
-              `Zone info not found for destination zone ${warp.destination_zone_id}`
+              `Map info not found for destination map ${warp.destination_map_id}`
             );
             // Still try to load the map even if we couldn't get the zone name
             this.game.registry.set(
               "destinationZoneId",
-              warp.destination_zone_id
+              warp.destination_map_id
             );
             this.resetScene();
           }
         } catch (error) {
           console.error("Error warping to destination:", error);
           // Still try to load the map even if we couldn't get the zone name
-          this.game.registry.set("destinationZoneId", warp.destination_zone_id);
+          this.game.registry.set("destinationZoneId", warp.destination_map_id);
           this.resetScene();
         }
       } else {
-        console.warn("Invalid warp data or missing destination zone ID", warp);
+        console.warn("Invalid warp data or missing destination map ID", warp);
       }
     });
 
@@ -464,7 +464,7 @@ export class TileViewer extends Scene {
 
         // Filter items for this zone
         if (Array.isArray(allItems)) {
-          this.items = allItems.filter((item: any) => item.zone_id === zoneId);
+          this.items = allItems.filter((item: any) => item.map_id === zoneId);
         } else {
           this.items = [];
         }
@@ -481,7 +481,7 @@ export class TileViewer extends Scene {
 
         // Filter warps for this zone
         if (Array.isArray(allWarps)) {
-          this.warps = allWarps.filter((warp: any) => warp.zone_id === zoneId);
+          this.warps = allWarps.filter((warp: any) => warp.map_id === zoneId);
         } else {
           this.warps = [];
         }

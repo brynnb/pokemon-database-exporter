@@ -22,7 +22,7 @@ export class MapRenderer {
 
     // Render each tile
     for (const tile of tiles) {
-      const { x, y, tile_image_id, zone_id } = tile;
+      const { x, y, tile_image_id, map_id } = tile;
 
       // Calculate position
       const posX = x * TILE_SIZE;
@@ -36,9 +36,9 @@ export class MapRenderer {
       tileSprite.setOrigin(0, 0);
       tileSprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
 
-      // Store the tile_image_id and zone_id for later reference
+      // Store the tile_image_id and map_id for later reference
       (tileSprite as any).tileImageId = tile_image_id;
-      (tileSprite as any).zoneId = zone_id;
+      (tileSprite as any).mapId = map_id;
 
       // Add to container
       this.mapContainer.add(tileSprite);
@@ -210,5 +210,26 @@ export class MapRenderer {
     } catch (error) {
       console.error("Error clearing map renderer:", error);
     }
+  }
+
+  private createTileSprite(tile: any): Phaser.GameObjects.Sprite {
+    // Extract tile properties
+    const { x, y, tile_image_id, map_id } = tile;
+
+    // Create a sprite for the tile
+    const tileSprite = this.scene.add.sprite(
+      x * TILE_SIZE,
+      y * TILE_SIZE,
+      `tile_${tile_image_id}`
+    );
+
+    // Set the origin to the top-left corner
+    tileSprite.setOrigin(0, 0);
+
+    // Store the tile_image_id and map_id for later reference
+    (tileSprite as any).tileImageId = tile_image_id;
+    (tileSprite as any).mapId = map_id;
+
+    return tileSprite;
   }
 }
