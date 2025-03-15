@@ -15,6 +15,14 @@ export class CameraController {
     lastPointerPosition: { x: 0, y: 0 },
   };
 
+  // Store overworld camera state
+  private overworldCameraState = {
+    x: 0,
+    y: 0,
+    zoom: DEFAULT_ZOOM,
+    saved: false,
+  };
+
   constructor(scene: Scene) {
     this.scene = scene;
     this.mainCamera = scene.cameras.main;
@@ -141,17 +149,126 @@ export class CameraController {
   }
 
   /**
+   * Save the current camera position and zoom for the overworld view
+   */
+  saveOverworldCameraState() {
+    if (this.isOverworld) {
+      // Don't save if we're at the default position (0,0) with default zoom
+      // This likely means the camera was just reset
+      if (
+        this.mainCamera.scrollX === 0 &&
+        this.mainCamera.scrollY === 0 &&
+        this.zoomLevel === DEFAULT_ZOOM
+      ) {
+        console.log("Not saving default camera position (0,0)");
+        return;
+      }
+
+      this.overworldCameraState = {
+        x: this.mainCamera.scrollX,
+        y: this.mainCamera.scrollY,
+        zoom: this.zoomLevel,
+        saved: true,
+      };
+      console.log(
+        "Saved overworld camera state:",
+        JSON.stringify(this.overworldCameraState)
+      );
+
+      // Also save to localStorage as a backup in case of scene resets
+      try {
+        localStorage.setItem(
+          "overworldCameraState",
+          JSON.stringify(this.overworldCameraState)
+        );
+      } catch (e) {
+        console.error("Failed to save camera state to localStorage:", e);
+      }
+    }
+  }
+
+  /**
+   * Restore the saved overworld camera position and zoom
+   * @returns True if a saved state was restored, false otherwise
+   */
+  restoreOverworldCameraState(): boolean {
+    // First try to get from localStorage (more reliable across scene resets)
+    try {
+      const savedState = localStorage.getItem("overworldCameraState");
+      if (savedState) {
+        const state = JSON.parse(savedState);
+        console.log(
+          "Restoring overworld camera state from localStorage:",
+          savedState
+        );
+
+        // Set zoom first to ensure proper positioning
+        this.setZoom(state.zoom);
+
+        // Then set scroll position
+        this.mainCamera.setScroll(state.x, state.y);
+
+        // Update memory state
+        this.overworldCameraState = state;
+
+        return true;
+      }
+    } catch (e) {
+      console.error("Failed to restore camera state from localStorage:", e);
+    }
+
+    // Fall back to memory if localStorage failed
+    if (this.overworldCameraState.saved) {
+      console.log(
+        "Restoring overworld camera state from memory:",
+        JSON.stringify(this.overworldCameraState)
+      );
+
+      // Set zoom first to ensure proper positioning
+      this.setZoom(this.overworldCameraState.zoom);
+
+      // Then set scroll position
+      this.mainCamera.setScroll(
+        this.overworldCameraState.x,
+        this.overworldCameraState.y
+      );
+
+      return true;
+    }
+
+    console.log("No saved overworld camera state to restore");
+    return false;
+  }
+
+  /**
    * Set the view mode to overworld or non-overworld and adjust zoom accordingly
    * @param isOverworld Whether the current view is the overworld
    */
   setViewMode(isOverworld: boolean) {
+    // Only save the camera state if we're switching from overworld to zone view
+    // AND we have valid coordinates (not 0,0 which indicates a reset camera)
+    if (
+      this.isOverworld &&
+      !isOverworld &&
+      (this.mainCamera.scrollX !== 0 || this.mainCamera.scrollY !== 0)
+    ) {
+      console.log("Switching from overworld to zone view, saving camera state");
+      this.saveOverworldCameraState();
+    }
+
+    // Update the mode
     this.isOverworld = isOverworld;
 
     // Set appropriate zoom level based on view mode
     if (isOverworld) {
-      this.setZoom(DEFAULT_ZOOM);
+      console.log("Setting view mode to overworld");
+      // Don't set zoom here as we'll restore it in loadOverworldData
     } else {
+      console.log("Setting view mode to zone view");
+      // Always use the default zoom for zone views
       this.setZoom(NON_OVERWORLD_ZOOM);
+      // Reset camera position for zone views
+      this.mainCamera.setScroll(0, 0);
     }
   }
 
@@ -169,6 +286,8 @@ export class CameraController {
     // Reset zoom to appropriate default based on current view mode
     if (this.isOverworld) {
       this.setZoom(DEFAULT_ZOOM);
+      // Clear saved state when explicitly resetting
+      this.overworldCameraState.saved = false;
     } else {
       this.setZoom(NON_OVERWORLD_ZOOM);
     }

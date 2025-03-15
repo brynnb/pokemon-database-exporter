@@ -129,8 +129,34 @@ export class TileViewer extends Scene {
     this.mapRenderer = new MapRenderer(this, this.mapContainer);
     this.cameraController = new CameraController(this);
 
-    // Reset camera to ensure we're starting fresh
-    this.cameraController.resetCamera();
+    // Check if we have data passed from resetScene
+    let destinationZoneId = null;
+    let loadOverworld = null;
+
+    if (data) {
+      destinationZoneId = data.destinationZoneId;
+      loadOverworld = data.loadOverworld;
+    } else {
+      // Fall back to localStorage if no data was passed
+      destinationZoneId = localStorage.getItem("destinationZoneId");
+      loadOverworld = localStorage.getItem("loadOverworld");
+    }
+
+    // Check if we're returning to overworld and should preserve camera state
+    const useOverworldSavedCamera =
+      localStorage.getItem("useOverworldSavedCamera") === "true" ||
+      loadOverworld === "true";
+
+    // Only reset the camera if we're not returning to overworld
+    if (!useOverworldSavedCamera) {
+      console.log("Resetting camera in create");
+      this.cameraController.resetCamera();
+    } else {
+      console.log("Preserving camera state for overworld return");
+    }
+
+    // Clear the flag
+    localStorage.removeItem("useOverworldSavedCamera");
 
     this.uiManager = new UiManager(this);
 
@@ -171,33 +197,50 @@ export class TileViewer extends Scene {
 
     // Handle warp click event - use once to avoid duplicate handlers
     this.events.once("warpClicked", async (warp: any) => {
+      console.log("Warp clicked:", warp);
+
       if (warp && warp.destination_zone_id) {
-        console.log(
-          `Warp clicked: Destination zone ${warp.destination_zone_id}`
-        );
-
-        // Show loading text
-        this.uiManager.setLoadingText("Warping to new location...");
-
         try {
-          // Get destination zone info for a better message
-          const destinationZoneInfo = await this.mapDataService.fetchZoneInfo(
+          // Get the zone name for the destination
+          const zoneInfo = await this.mapDataService.fetchZoneInfo(
             warp.destination_zone_id
           );
-          if (destinationZoneInfo && destinationZoneInfo.name) {
-            this.uiManager.setLoadingText(
-              `Warping to ${destinationZoneInfo.name}...`
+
+          // Show loading text
+          this.uiManager.setLoadingText("Warping to new location...");
+
+          if (zoneInfo && zoneInfo.name) {
+            this.uiManager.setLoadingText(`Warping to ${zoneInfo.name}...`);
+            console.log(
+              `Warping to ${zoneInfo.name} (Zone ${warp.destination_zone_id})`
             );
+
+            // Always save the overworld camera state if we're in overworld mode
+            if (this.isOverworldMode) {
+              console.log("Saving overworld camera state before warping");
+              // Let the camera controller handle saving the state
+              this.cameraController.saveOverworldCameraState();
+            }
+
+            // Store the destination zone ID in localStorage
+            localStorage.setItem(
+              "destinationZoneId",
+              warp.destination_zone_id.toString()
+            );
+
+            // Force a complete scene restart to ensure clean state
+            this.resetScene(true);
+          } else {
+            console.warn(
+              `Zone info not found for destination zone ${warp.destination_zone_id}`
+            );
+            // Still try to load the map even if we couldn't get the zone name
+            localStorage.setItem(
+              "destinationZoneId",
+              warp.destination_zone_id.toString()
+            );
+            this.resetScene();
           }
-
-          // Store the destination zone ID in localStorage so we can load it after restart
-          localStorage.setItem(
-            "destinationZoneId",
-            warp.destination_zone_id.toString()
-          );
-
-          // Force a complete scene restart to ensure clean state
-          this.resetScene();
         } catch (error) {
           console.error("Error warping to destination:", error);
           // Still try to load the map even if we couldn't get the zone name
@@ -231,8 +274,20 @@ export class TileViewer extends Scene {
       // Set a flag to indicate we want to load the overworld
       localStorage.setItem("loadOverworld", "true");
 
+      // Store a flag to indicate we're returning to overworld and should use saved camera position
+      localStorage.setItem("useOverworldSavedCamera", "true");
+
+      // Log the current saved state for debugging
+      try {
+        const savedState = localStorage.getItem("overworldCameraState");
+        console.log("Current saved overworld camera state:", savedState);
+      } catch (e) {
+        console.error("Error reading saved camera state:", e);
+      }
+
       // Force a complete scene restart to ensure clean state
-      this.resetScene();
+      // We don't need to reset the camera here as we want to preserve the saved state
+      this.resetScene(false);
     });
 
     // Handle window resize
@@ -246,19 +301,6 @@ export class TileViewer extends Scene {
       this.preloadText.destroy();
     }
 
-    // Check if we have data passed from resetScene
-    let destinationZoneId = null;
-    let loadOverworld = null;
-
-    if (data) {
-      destinationZoneId = data.destinationZoneId;
-      loadOverworld = data.loadOverworld;
-    } else {
-      // Fall back to localStorage if no data was passed
-      destinationZoneId = localStorage.getItem("destinationZoneId");
-      loadOverworld = localStorage.getItem("loadOverworld");
-    }
-
     // Clear localStorage to avoid duplicate loads
     localStorage.removeItem("destinationZoneId");
     localStorage.removeItem("loadOverworld");
@@ -268,11 +310,6 @@ export class TileViewer extends Scene {
 
       // Set to overworld mode
       this.isOverworldMode = true;
-      // Set camera to overworld mode
-      this.cameraController.setViewMode(true);
-
-      // Hide the back to overworld button
-      this.uiManager.hideBackToOverworldButton();
 
       // Load the overworld map
       this.loadOverworldData();
@@ -370,15 +407,13 @@ export class TileViewer extends Scene {
       this.warps = [];
       this.npcs = [];
 
-      // Reset camera
-      this.cameraController.resetCamera();
-
       // Remove any zone legend (which is only present in overworld view)
       this.removeZoneLegend();
 
       // Update mode
       this.isOverworldMode = false;
-      // Set camera to non-overworld mode
+
+      // Set camera to non-overworld mode - this will save the overworld camera state if needed
       this.cameraController.setViewMode(false);
 
       // Show the back to overworld button
@@ -445,12 +480,8 @@ export class TileViewer extends Scene {
         this.warps
       );
 
-      // Center the camera on the map
+      // Always center the camera on the map for zone views
       if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
-        // Set camera to non-overworld mode (this will set the appropriate zoom)
-        this.cameraController.setViewMode(false);
-
-        // Then center the camera
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
       }
 
@@ -489,11 +520,9 @@ export class TileViewer extends Scene {
       this.warps = [];
       this.npcs = [];
 
-      // Reset camera
-      this.cameraController.resetCamera();
-
       // Update mode
       this.isOverworldMode = true;
+
       // Set camera to overworld mode
       this.cameraController.setViewMode(true);
 
@@ -579,13 +608,21 @@ export class TileViewer extends Scene {
         this.warps
       );
 
-      // Center the camera on the map
-      if (mapBounds.centerX !== undefined && mapBounds.centerY !== undefined) {
-        // Set camera to overworld mode (this will set the appropriate zoom)
-        this.cameraController.setViewMode(true);
+      // Always try to restore the saved camera position when loading the overworld
+      console.log("Attempting to restore camera position for overworld");
+      const restored = this.cameraController.restoreOverworldCameraState();
+      console.log("Camera position restored:", restored);
 
-        // Then center the camera
+      // Only center the camera if we couldn't restore a saved position
+      if (
+        !restored &&
+        mapBounds.centerX !== undefined &&
+        mapBounds.centerY !== undefined
+      ) {
+        console.log("No saved position, centering camera on map");
         this.cameraController.centerOnMap(mapBounds.centerX, mapBounds.centerY);
+        // Set default zoom since we're centering
+        this.cameraController.setZoom(DEFAULT_ZOOM);
       }
 
       // Create a legend for the zones
@@ -689,7 +726,7 @@ export class TileViewer extends Scene {
     }
   }
 
-  resetScene() {
+  resetScene(resetCamera: boolean = true) {
     console.log("Resetting scene");
 
     // First, store any data we need to pass to the new scene
@@ -702,8 +739,8 @@ export class TileViewer extends Scene {
     localStorage.removeItem("destinationZoneId");
     localStorage.removeItem("loadOverworld");
 
-    // Reset camera
-    if (this.cameraController) {
+    // Reset camera if requested
+    if (resetCamera && this.cameraController) {
       this.cameraController.resetCamera();
     }
 
