@@ -132,10 +132,7 @@ def copy_sprite_files():
 
                 # Make white pixels transparent if needed
                 if make_transparent:
-                    transparent_path = os.path.join(dest_dir, f"transparent_{filename}")
-                    if make_white_pixels_transparent(
-                        dest_path, transparent_path, filename
-                    ):
+                    if make_white_pixels_transparent(dest_path, dest_path, filename):
                         transparent_count += 1
 
             except Exception as e:

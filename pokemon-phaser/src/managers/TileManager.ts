@@ -1,14 +1,20 @@
 import { Scene } from "phaser";
-import { TileImageCacheEntry, getTileImageUrl, getSpriteUrl } from "../api";
+import { TileImageCacheEntry, getTileImageUrl } from "../api";
 import { TILE_SIZE } from "../constants";
+import { SpriteManager } from "./SpriteManager";
+import { NpcManager } from "./NpcManager";
 
 export class TileManager {
   private scene: Scene;
   private tileImageCache: Map<number, TileImageCacheEntry> = new Map();
   private loadingTextures: Set<string> = new Set();
+  private spriteManager: SpriteManager;
+  private npcManager: NpcManager;
 
   constructor(scene: Scene) {
     this.scene = scene;
+    this.spriteManager = new SpriteManager(scene);
+    this.npcManager = new NpcManager(scene, this.spriteManager);
     this.createFallbackTextures();
   }
 
@@ -32,19 +38,6 @@ export class TileManager {
       graphics.lineStyle(1, 0x000000);
       graphics.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
       graphics.generateTexture("placeholder-tile", TILE_SIZE, TILE_SIZE);
-      graphics.destroy();
-    }
-
-    // Create a fallback item marker if the poke_ball image fails to load
-    if (!this.scene.textures.exists("item-marker-fallback")) {
-      const graphics = this.scene.make.graphics({ x: 0, y: 0 });
-      graphics.fillStyle(0xff0000);
-      graphics.fillCircle(TILE_SIZE / 4, TILE_SIZE / 4, TILE_SIZE / 4);
-      graphics.generateTexture(
-        "item-marker-fallback",
-        TILE_SIZE / 2,
-        TILE_SIZE / 2
-      );
       graphics.destroy();
     }
   }
@@ -124,25 +117,26 @@ export class TileManager {
     text.destroy();
   }
 
+  async loadNpcSprite(spriteName: string): Promise<string> {
+    return this.npcManager.loadNpcSprite(spriteName);
+  }
+
+  getNpcManager(): NpcManager {
+    return this.npcManager;
+  }
+
   preloadCommonTiles() {
     // Preload some common tile images using the API endpoint
     for (let i = 1; i <= 10; i++) {
       this.scene.load.image(`tile-${i}`, getTileImageUrl(i));
     }
 
-    // Load the poke_ball image for items using the sprite API
-    this.scene.load.image("item-marker", getSpriteUrl("poke_ball.png"));
+    // Load common sprites
+    this.spriteManager.preloadCommonSprites();
+  }
 
-    // Create a fallback item marker in case the image fails to load
-    const graphics = this.scene.make.graphics({ x: 0, y: 0 });
-    graphics.fillStyle(0xff0000);
-    graphics.fillCircle(TILE_SIZE / 4, TILE_SIZE / 4, TILE_SIZE / 4);
-    graphics.generateTexture(
-      "item-marker-fallback",
-      TILE_SIZE / 2,
-      TILE_SIZE / 2
-    );
-    graphics.destroy();
+  async preloadNpcSprites(npcs: any[]) {
+    return this.npcManager.preloadNpcSprites(npcs);
   }
 
   getTileImageCache() {
@@ -152,5 +146,7 @@ export class TileManager {
   clearCache() {
     this.tileImageCache.clear();
     this.loadingTextures.clear();
+    this.spriteManager.clearCache();
+    this.npcManager.clearCache();
   }
 }

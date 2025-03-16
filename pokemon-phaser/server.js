@@ -115,20 +115,51 @@ app.get("/api/tile-image/:id", (req, res) => {
 // Add an endpoint to serve sprite images
 app.get("/api/sprite/:name", (req, res) => {
   const spriteName = req.params.name;
+  console.log(`Sprite request for: ${spriteName}`);
 
   // Validate the sprite name to prevent directory traversal
   if (!spriteName || spriteName.includes("..") || spriteName.includes("/")) {
+    console.error(`Invalid sprite name: ${spriteName}`);
     return res.status(400).send("Invalid sprite name");
   }
 
   // Construct the path to the sprite
   const spritePath = path.join(__dirname, "..", "sprites", spriteName);
+  console.log(`Looking for sprite at: ${spritePath}`);
 
   // Check if the file exists
   if (require("fs").existsSync(spritePath)) {
+    console.log(`Sprite found: ${spritePath}`);
     res.setHeader("Cache-Control", "public, max-age=86400");
     return res.sendFile(spritePath);
   } else {
+    // Try lowercase version as fallback
+    const lowercasePath = path.join(
+      __dirname,
+      "..",
+      "sprites",
+      spriteName.toLowerCase()
+    );
+    console.log(`Trying lowercase path: ${lowercasePath}`);
+
+    if (require("fs").existsSync(lowercasePath)) {
+      console.log(`Sprite found at lowercase path: ${lowercasePath}`);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.sendFile(lowercasePath);
+    }
+
+    // List available sprites for debugging
+    try {
+      const fs = require("fs");
+      const availableSprites = fs.readdirSync(
+        path.join(__dirname, "..", "sprites")
+      );
+      console.log(`Available sprites: ${availableSprites.join(", ")}`);
+    } catch (err) {
+      console.error(`Error listing sprites directory: ${err}`);
+    }
+
+    console.error(`Sprite not found: ${spriteName}`);
     return res.status(404).send("Sprite not found");
   }
 });
@@ -205,10 +236,10 @@ app.get("/api/items", (req, res) => {
 // API endpoint to get NPCs
 app.get("/api/npcs", (req, res) => {
   db.all(
-    `SELECT o.id, o.x, o.y, o.map_id, o.spriteset_id as sprite_id, o.name 
+    `SELECT o.id, o.x, o.y, o.map_id, o.sprite_name, o.name, o.action_type, o.action_direction 
      FROM objects o
      JOIN maps m ON o.map_id = m.id
-     WHERE o.object_type = 'npc' AND m.is_overworld = 1`,
+     WHERE o.object_type = 'npc' AND m.is_overworld = 1 AND o.action_type = 'STAY'`,
     [],
     (err, rows) => {
       if (err) {

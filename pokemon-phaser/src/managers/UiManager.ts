@@ -107,7 +107,8 @@ export class UiManager {
     items: any[],
     mapInfo: any,
     getWorldPoint: (x: number, y: number) => Phaser.Math.Vector2,
-    warps: any[] = []
+    warps: any[] = [],
+    npcs: any[] = []
   ) {
     // Convert screen coordinates to world coordinates
     const worldPoint = getWorldPoint(pointer.x, pointer.y);
@@ -174,6 +175,15 @@ export class UiManager {
     if (warp) {
       info += `\nWarp: (${warp.x}, ${warp.y})`;
       info += `\nDestination: Map ${warp.destination_map} at (${warp.destination_x}, ${warp.destination_y})`;
+    }
+
+    // Find NPC at this position
+    const npc = npcs.find((n) => n.x === tileX && n.y === tileY);
+    if (npc) {
+      info += `\nNPC: ${npc.name || "Unnamed NPC"}`;
+      if (npc.sprite_name) {
+        info += `\nSprite: ${npc.sprite_name}`;
+      }
     }
 
     // Update the info text

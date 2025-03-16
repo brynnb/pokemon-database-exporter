@@ -4,8 +4,7 @@ import { DEFAULT_MAP_ID, DEFAULT_ZOOM, OVERWORLD_MODE } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { MapRenderer } from "../renderers/MapRenderer";
 import { MapDataService } from "../services/MapDataService";
-import { TileManager } from "../managers/TileManager";
-import { UiManager } from "../managers/UiManager";
+import { TileManager, UiManager } from "../managers";
 import {
   TileUpdateEvent,
   webSocketService,
@@ -193,7 +192,8 @@ export class TileViewer extends Scene {
           this.items,
           this.mapInfo,
           (x, y) => this.cameraController.getWorldPoint(x, y),
-          this.warps
+          this.warps,
+          this.npcs
         );
       }
     });
@@ -484,11 +484,37 @@ export class TileViewer extends Scene {
         this.warps = [];
       }
 
+      this.uiManager.setLoadingText("Loading NPCs...");
+
+      try {
+        // Fetch all NPCs
+        const allNpcs = await this.mapDataService.fetchNPCs();
+
+        // Filter NPCs for this map
+        if (Array.isArray(allNpcs)) {
+          this.npcs = allNpcs.filter((npc: any) => npc.map_id === mapId);
+
+          // Preload NPC sprites before rendering
+          if (this.npcs.length > 0) {
+            this.uiManager.setLoadingText(
+              `Preloading ${this.npcs.length} NPC sprites...`
+            );
+            await this.tileManager.preloadNpcSprites(this.npcs);
+          }
+        } else {
+          this.npcs = [];
+        }
+      } catch (npcError) {
+        console.error("Error loading NPCs:", npcError);
+        this.npcs = [];
+      }
+
       // Render the map
       const mapBounds = this.mapRenderer.renderMap(
         this.tiles,
         this.items,
-        this.warps
+        this.warps,
+        this.npcs
       );
 
       // Always center the camera on the map for map views
@@ -597,6 +623,14 @@ export class TileViewer extends Scene {
       try {
         // Fetch all NPCs
         this.npcs = await this.mapDataService.fetchNPCs();
+
+        // Preload NPC sprites before rendering
+        if (this.npcs.length > 0) {
+          this.uiManager.setLoadingText(
+            `Preloading ${this.npcs.length} NPC sprites...`
+          );
+          await this.tileManager.preloadNpcSprites(this.npcs);
+        }
       } catch (npcError) {
         console.error("Error loading NPCs:", npcError);
         this.npcs = [];
@@ -616,7 +650,8 @@ export class TileViewer extends Scene {
       const mapBounds = this.mapRenderer.renderMap(
         this.tiles,
         this.items,
-        this.warps
+        this.warps,
+        this.npcs
       );
 
       // Check if we're returning from a map view
