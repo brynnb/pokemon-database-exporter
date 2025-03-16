@@ -119,7 +119,7 @@ app.get("/api/tile-image/:id", (req, res) => {
 // Add an endpoint to serve sprite images
 app.get("/api/sprite/:name", (req, res) => {
   const spriteName = req.params.name;
-  console.log(`Sprite request for: ${spriteName}`);
+  // console.log(`Sprite request for: ${spriteName}`);
 
   // Validate the sprite name to prevent directory traversal
   if (!spriteName || spriteName.includes("..") || spriteName.includes("/")) {
@@ -129,11 +129,11 @@ app.get("/api/sprite/:name", (req, res) => {
 
   // Construct the path to the sprite
   const spritePath = path.join(__dirname, "..", "sprites", spriteName);
-  console.log(`Looking for sprite at: ${spritePath}`);
+  // console.log(`Looking for sprite at: ${spritePath}`);
 
   // Check if the file exists
   if (require("fs").existsSync(spritePath)) {
-    console.log(`Sprite found: ${spritePath}`);
+    // console.log(`Sprite found: ${spritePath}`);
     res.setHeader("Cache-Control", "public, max-age=86400");
     return res.sendFile(spritePath);
   } else {
@@ -158,7 +158,7 @@ app.get("/api/sprite/:name", (req, res) => {
       const availableSprites = fs.readdirSync(
         path.join(__dirname, "..", "sprites")
       );
-      console.log(`Available sprites: ${availableSprites.join(", ")}`);
+      // console.log(`Available sprites: ${availableSprites.join(", ")}`);
     } catch (err) {
       console.error(`Error listing sprites directory: ${err}`);
     }
@@ -273,20 +273,103 @@ app.get("/api/walking-npcs", (req, res) => {
   );
 });
 
-// API endpoint to get the current position of the walking NPC
-app.get("/api/walking-npc/current", (req, res) => {
-  if (npcMovementManager && npcMovementManager.walkingNPC) {
-    res.json(npcMovementManager.walkingNPC);
+// API endpoint to get all current walking NPCs with their current positions
+app.get("/api/walking-npcs/current", (req, res) => {
+  if (npcMovementManager) {
+    const npcs = npcMovementManager.getAllNPCs();
+    if (npcs && npcs.length > 0) {
+      res.json(npcs);
+    } else {
+      res.status(404).json({ error: "No walking NPCs found" });
+    }
   } else {
-    res.status(404).json({ error: "No walking NPC found" });
+    res.status(404).json({ error: "NPC movement manager not initialized" });
   }
 });
 
-// API endpoint to reset the walking NPC to its original position
-app.post("/api/walking-npc/reset", (req, res) => {
-  if (npcMovementManager && npcMovementManager.walkingNPC) {
+// API endpoint to get a specific walking NPC by ID
+app.get("/api/walking-npc/:id", (req, res) => {
+  const npcId = parseInt(req.params.id);
+
+  if (isNaN(npcId)) {
+    return res.status(400).json({ error: "Invalid NPC ID" });
+  }
+
+  if (npcMovementManager) {
+    const npc = npcMovementManager.getNPC(npcId);
+    if (npc) {
+      res.json(npc);
+    } else {
+      res.status(404).json({ error: `NPC with ID ${npcId} not found` });
+    }
+  } else {
+    res.status(404).json({ error: "NPC movement manager not initialized" });
+  }
+});
+
+// API endpoint to reset all walking NPCs to their original positions
+app.post("/api/walking-npcs/reset", (req, res) => {
+  if (npcMovementManager) {
     npcMovementManager.resetToOriginalPosition();
-    res.json({ success: true, npc: npcMovementManager.walkingNPC });
+    res.json({
+      success: true,
+      message: "All NPCs reset to original positions",
+    });
+  } else {
+    res.status(404).json({ error: "NPC movement manager not initialized" });
+  }
+});
+
+// API endpoint to reset a specific walking NPC to its original position
+app.post("/api/walking-npc/:id/reset", (req, res) => {
+  const npcId = parseInt(req.params.id);
+
+  if (isNaN(npcId)) {
+    return res.status(400).json({ error: "Invalid NPC ID" });
+  }
+
+  if (npcMovementManager) {
+    const success = npcMovementManager.resetNPCToOriginalPosition(npcId);
+    if (success) {
+      res.json({
+        success: true,
+        message: `NPC ${npcId} reset to original position`,
+      });
+    } else {
+      res.status(404).json({
+        error: `NPC with ID ${npcId} not found or could not be reset`,
+      });
+    }
+  } else {
+    res.status(404).json({ error: "NPC movement manager not initialized" });
+  }
+});
+
+// For backward compatibility - redirect to the new endpoint
+app.get("/api/walking-npc/current", (req, res) => {
+  if (npcMovementManager) {
+    const npcs = npcMovementManager.getAllNPCs();
+    if (npcs && npcs.length > 0) {
+      // Return the first NPC for backward compatibility
+      res.json(npcs[0]);
+    } else {
+      res.status(404).json({ error: "No walking NPC found" });
+    }
+  } else {
+    res.status(404).json({ error: "NPC movement manager not initialized" });
+  }
+});
+
+// For backward compatibility - redirect to the new endpoint
+app.post("/api/walking-npc/reset", (req, res) => {
+  if (npcMovementManager) {
+    npcMovementManager.resetToOriginalPosition();
+    const npcs = npcMovementManager.getAllNPCs();
+    res.json({
+      success: true,
+      npc: npcs && npcs.length > 0 ? npcs[0] : null,
+      message: "All NPCs reset to original positions",
+    });
   } else {
     res.status(404).json({ error: "No walking NPC found" });
   }
