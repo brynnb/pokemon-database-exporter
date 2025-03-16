@@ -250,6 +250,8 @@ class NPCMovementManager {
           const currentState = this.npcStates.get(npc.id);
           if (currentState) {
             currentState.isMoving = false;
+            // Set the standing-still frame when movement is complete
+            this.updateStandingFrame(npc, currentState.currentDirection);
           }
         }, 500);
       } else {
@@ -259,6 +261,33 @@ class NPCMovementManager {
     } catch (error) {
       console.error(`Error updating NPC ${npc.id} movement:`, error);
     }
+  }
+
+  // Set the standing-still frame based on the NPC's current direction
+  updateStandingFrame(npc, direction) {
+    if (!direction) return;
+
+    switch (direction) {
+      case DIRECTIONS.UP:
+        npc.frame = SPRITE_FRAMES.UP;
+        npc.flipX = false;
+        break;
+      case DIRECTIONS.DOWN:
+        npc.frame = SPRITE_FRAMES.DOWN;
+        npc.flipX = false;
+        break;
+      case DIRECTIONS.LEFT:
+        npc.frame = SPRITE_FRAMES.LEFT;
+        npc.flipX = false;
+        break;
+      case DIRECTIONS.RIGHT:
+        npc.frame = SPRITE_FRAMES.RIGHT;
+        npc.flipX = true;
+        break;
+    }
+
+    // Broadcast the frame update
+    this.broadcastNPCUpdate(npc);
   }
 
   // Set the initial frame for a direction
