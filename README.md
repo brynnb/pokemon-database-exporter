@@ -2,6 +2,10 @@
 
 This project exports data from the Pokémon Red/Blue game files into a SQLite database for easier analysis and use in other applications.
 
+## Known Issues (To-Do List)
+
+There is a lot of data still not in tables: NPC speech, text on signs, custom NPC behavior, wild pokemon data, collision info for tiles. Additionally some data is imperfect, and specifically the `warps` table, which is close to a good spot, but not entirely. 
+
 ## Installation
 
 1. Clone this repository:
