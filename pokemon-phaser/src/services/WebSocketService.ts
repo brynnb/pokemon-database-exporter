@@ -39,6 +39,21 @@ export interface TileUpdateEvent {
   newTileImageId: number;
 }
 
+export interface NpcUpdateEvent {
+  npc: {
+    id: number;
+    x: number;
+    y: number;
+    map_id: number;
+    sprite_name: string;
+    name: string;
+    action_type: string;
+    action_direction: string;
+    frame?: number;
+    flipX?: boolean;
+  };
+}
+
 export class WebSocketService {
   private socket: WebSocket | null = null;
   private reconnectInterval: number = 5000; // 5 seconds
@@ -87,6 +102,12 @@ export class WebSocketService {
               this.events.emit("tileUpdate", {
                 tileId: data.tileId,
                 newTileImageId: data.newTileImageId,
+              });
+              break;
+
+            case "npcUpdate":
+              this.events.emit("npcUpdate", {
+                npc: data.npc,
               });
               break;
 

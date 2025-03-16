@@ -5,13 +5,13 @@ import { getSpriteUrl } from "../api";
 
 // Define direction frame indices
 enum DirectionFrame {
-  DOWN = 0,
-  UP = 1,
-  LEFT = 2,
+  DOWN = 0, // 0th frame for facing down
+  UP = 1, // 1st frame for facing up
+  LEFT = 2, // 2nd frame for facing left
   RIGHT = 2, // Same as LEFT but will be flipped
-  WALKING_DOWN = 3,
-  WALKING_UP = 4,
-  WALKING_LEFT = 5,
+  WALKING_DOWN = 3, // 3rd frame for walking down
+  WALKING_UP = 4, // 4th frame for walking up
+  WALKING_LEFT = 5, // 5th frame for walking left
   WALKING_RIGHT = 5, // Same as WALKING_LEFT but will be flipped
 }
 
@@ -27,7 +27,7 @@ export class NpcManager {
 
   /**
    * Get the frame index for an NPC based on its action_type and action_direction
-   * @param actionType The NPC's action type (e.g., "STAY")
+   * @param actionType The NPC's action type (e.g., "STAY", "WALK")
    * @param actionDirection The NPC's action direction (e.g., "DOWN", "UP", "LEFT", "RIGHT")
    * @returns An object with the frame index and whether to flip the sprite horizontally
    */
@@ -48,44 +48,41 @@ export class NpcManager {
     const direction = actionDirection.toUpperCase();
     const type = (actionType || "STAY").toUpperCase();
 
-    // Currently we only support STAY action type
-    // If we add more action types in the future (like WALK), we can handle them here
-    if (type !== "STAY") {
-      console.warn(`Unsupported action type: ${type}, defaulting to STAY`);
+    // Handle different action types
+    const isWalking = type === "WALK";
+
+    // Check if we have a specific frame and flipX from the server
+    if (
+      (actionType as any)?.frame !== undefined &&
+      (actionType as any)?.flipX !== undefined
+    ) {
+      return {
+        frame: (actionType as any).frame,
+        flipX: (actionType as any).flipX,
+      };
     }
 
     // Determine the frame based on direction
     switch (direction) {
       case "DOWN":
-        frame = DirectionFrame.DOWN;
+        frame = isWalking ? DirectionFrame.WALKING_DOWN : DirectionFrame.DOWN;
         break;
       case "UP":
-        // Check if the UP frame exists in the texture
-        if (spriteKey && this.scene.textures.exists(spriteKey)) {
-          const frameCount = this.scene.textures.get(spriteKey).frameTotal;
-          frame = frameCount > 1 ? DirectionFrame.UP : DirectionFrame.DOWN;
-        } else {
-          frame = DirectionFrame.UP;
-        }
+        frame = isWalking ? DirectionFrame.WALKING_UP : DirectionFrame.UP;
         break;
       case "LEFT":
-        // Check if the LEFT frame exists in the texture
-        if (spriteKey && this.scene.textures.exists(spriteKey)) {
-          const frameCount = this.scene.textures.get(spriteKey).frameTotal;
-          frame = frameCount > 2 ? DirectionFrame.LEFT : DirectionFrame.DOWN;
-        } else {
-          frame = DirectionFrame.LEFT;
-        }
+        frame = isWalking ? DirectionFrame.WALKING_LEFT : DirectionFrame.LEFT;
+        flipX = false;
         break;
       case "RIGHT":
-        // Check if the LEFT frame exists in the texture (we'll flip it)
-        if (spriteKey && this.scene.textures.exists(spriteKey)) {
-          const frameCount = this.scene.textures.get(spriteKey).frameTotal;
-          frame = frameCount > 2 ? DirectionFrame.RIGHT : DirectionFrame.DOWN;
-        } else {
-          frame = DirectionFrame.RIGHT;
-        }
-        flipX = true; // Flip the sprite horizontally for right-facing
+        frame = isWalking ? DirectionFrame.WALKING_RIGHT : DirectionFrame.RIGHT;
+        flipX = true;
+        break;
+      case "UP_DOWN":
+      case "LEFT_RIGHT":
+      case "ANY_DIR":
+        // For movement patterns, default to DOWN when not moving
+        frame = DirectionFrame.DOWN;
         break;
       default:
         console.warn(`Unknown direction: ${direction}, defaulting to DOWN`);
@@ -121,7 +118,13 @@ export class NpcManager {
       // Store in cache for future reference
       this.npcSpriteCache.set(spriteName, spriteKey);
 
-      // Load the sprite as a spritesheet with 6 frames (down, up, left, walking down, walking up, walking left)
+      // Load the sprite as a spritesheet with 6 frames (0-5)
+      // Frame 0: Down facing
+      // Frame 1: Up facing
+      // Frame 2: Left facing
+      // Frame 3: Walking down
+      // Frame 4: Walking up
+      // Frame 5: Walking left
       this.scene.load.spritesheet(spriteKey, getSpriteUrl(spriteFileName), {
         frameWidth: TILE_SIZE,
         frameHeight: TILE_SIZE,

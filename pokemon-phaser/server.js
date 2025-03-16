@@ -4,11 +4,15 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const WebSocket = require("ws");
+const NPCMovementManager = require("./npcMovement");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Global reference to the NPC movement manager
+let npcMovementManager = null;
 
 // Enable CORS for all routes
 app.use(cors());
@@ -239,7 +243,7 @@ app.get("/api/npcs", (req, res) => {
     `SELECT o.id, o.x, o.y, o.map_id, o.sprite_name, o.name, o.action_type, o.action_direction 
      FROM objects o
      JOIN maps m ON o.map_id = m.id
-     WHERE o.object_type = 'npc' AND m.is_overworld = 1 AND o.action_type = 'STAY'`,
+     WHERE o.object_type = 'npc' AND m.is_overworld = 1 AND (o.action_type = 'STAY' OR o.action_type = 'WALK')`,
     [],
     (err, rows) => {
       if (err) {
@@ -249,6 +253,43 @@ app.get("/api/npcs", (req, res) => {
       res.json(rows);
     }
   );
+});
+
+// API endpoint to get walking NPCs specifically
+app.get("/api/walking-npcs", (req, res) => {
+  db.all(
+    `SELECT o.id, o.x, o.y, o.map_id, o.sprite_name, o.name, o.action_type, o.action_direction 
+     FROM objects o
+     JOIN maps m ON o.map_id = m.id
+     WHERE o.object_type = 'npc' AND m.is_overworld = 1 AND o.action_type = 'WALK'`,
+    [],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// API endpoint to get the current position of the walking NPC
+app.get("/api/walking-npc/current", (req, res) => {
+  if (npcMovementManager && npcMovementManager.walkingNPC) {
+    res.json(npcMovementManager.walkingNPC);
+  } else {
+    res.status(404).json({ error: "No walking NPC found" });
+  }
+});
+
+// API endpoint to reset the walking NPC to its original position
+app.post("/api/walking-npc/reset", (req, res) => {
+  if (npcMovementManager && npcMovementManager.walkingNPC) {
+    npcMovementManager.resetToOriginalPosition();
+    res.json({ success: true, npc: npcMovementManager.walkingNPC });
+  } else {
+    res.status(404).json({ error: "No walking NPC found" });
+  }
 });
 
 // API endpoint to get overworld maps
@@ -355,6 +396,12 @@ app.get("*", (req, res) => {
 // Start the server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+
+  // Initialize the NPC movement manager
+  npcMovementManager = new NPCMovementManager(db, wss);
+  npcMovementManager.initialize().catch((err) => {
+    console.error("Failed to initialize NPC movement manager:", err);
+  });
 });
 
 // Handle process termination

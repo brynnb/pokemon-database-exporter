@@ -200,32 +200,43 @@ export class MapRenderer {
       if (npcSprite && npcSprite.active) {
         console.log(`Setting NPC sprite texture to ${spriteKey}`);
 
-        // Get the NPC manager to determine the correct frame and flip state
-        const npcManager = tileManager.getNpcManager();
+        // Get the frame and flip state
+        let frame = 0;
+        let flipX = false;
 
-        if (npcManager) {
-          // Get the frame and flip state based on action_type and action_direction
-          const { frame, flipX } = npcManager.getFrameForDirection(
-            npc.action_type || "STAY",
-            npc.action_direction || "DOWN",
-            spriteKey
-          );
-
-          console.log(
-            `NPC ${npc.name} action: ${npc.action_type || "STAY"}, direction: ${
-              npc.action_direction || "DOWN"
-            }, frame: ${frame}, flipX: ${flipX}`
-          );
-
-          // Set the texture with the correct frame
-          npcSprite.setTexture(spriteKey, frame);
-
-          // Set the horizontal flip
-          npcSprite.setFlipX(flipX);
+        // If we have frame and flipX from the server, use those
+        if (npc.frame !== undefined && npc.flipX !== undefined) {
+          frame = npc.frame;
+          flipX = npc.flipX;
+          console.log(`Using server-provided frame: ${frame}, flipX: ${flipX}`);
         } else {
-          // Fallback to default frame (facing down)
-          npcSprite.setTexture(spriteKey, 0);
+          // Otherwise, get them from the NPC manager
+          const npcManager = tileManager.getNpcManager();
+          if (npcManager) {
+            // Get the frame and flip state based on action_type and action_direction
+            const frameInfo = npcManager.getFrameForDirection(
+              npc.action_type || "STAY",
+              npc.action_direction || "DOWN",
+              spriteKey
+            );
+            frame = frameInfo.frame;
+            flipX = frameInfo.flipX;
+
+            console.log(
+              `NPC ${npc.name} action: ${
+                npc.action_type || "STAY"
+              }, direction: ${
+                npc.action_direction || "DOWN"
+              }, frame: ${frame}, flipX: ${flipX}`
+            );
+          }
         }
+
+        // Set the texture with the correct frame
+        npcSprite.setTexture(spriteKey, frame);
+
+        // Set the horizontal flip
+        npcSprite.setFlipX(flipX);
 
         // Set origin to center for proper positioning
         npcSprite.setOrigin(0.5, 0.5);
@@ -260,6 +271,167 @@ export class MapRenderer {
 
     // Update the stored tile image ID
     (tileSprite as any).tileImageId = newTileImageId;
+
+    return true;
+  }
+
+  updateNpcPosition(
+    npcId: number,
+    oldX: number,
+    oldY: number,
+    newX: number,
+    newY: number
+  ): boolean {
+    // Get the NPC sprite
+    const npcSprite = this.npcSprites.get(npcId);
+
+    if (!npcSprite) {
+      console.warn(`No NPC sprite found with ID ${npcId}`);
+      return false;
+    }
+
+    // Calculate new position
+    const posX = newX * TILE_SIZE + TILE_SIZE / 2;
+    const posY = newY * TILE_SIZE + TILE_SIZE / 2;
+
+    // Determine the direction of movement
+    let direction = "DOWN";
+    if (newY < oldY) direction = "UP";
+    else if (newY > oldY) direction = "DOWN";
+    else if (newX < oldX) direction = "LEFT";
+    else if (newX > oldX) direction = "RIGHT";
+
+    // Update the NPC data with the new direction
+    const npcData = (npcSprite as any).npcData;
+    if (npcData) {
+      // Store the previous direction to restore after movement
+      const previousDirection = npcData.action_direction;
+
+      // Update the direction for the movement animation
+      npcData.action_direction = direction;
+
+      // Try to get the TileManager from the scene
+      const tileManager = (this.scene as any).tileManager;
+
+      // Create a movement tween for smooth animation
+      this.scene.tweens.add({
+        targets: npcSprite,
+        x: posX,
+        y: posY,
+        duration: 500, // Half a second for the movement
+        ease: "Linear",
+        onComplete: () => {
+          // Update the NPC data in the sprite
+          if (npcSprite.active) {
+            npcData.x = newX;
+            npcData.y = newY;
+
+            // If the NPC has a specific movement pattern (UP_DOWN, LEFT_RIGHT, ANY_DIR),
+            // restore the original action_direction after movement
+            if (
+              npcData.action_direction === "UP_DOWN" ||
+              npcData.action_direction === "LEFT_RIGHT" ||
+              npcData.action_direction === "ANY_DIR"
+            ) {
+              npcData.action_direction = previousDirection;
+            }
+          }
+        },
+      });
+    } else {
+      // If we don't have NPC data, just move the sprite without animation
+      this.scene.tweens.add({
+        targets: npcSprite,
+        x: posX,
+        y: posY,
+        duration: 500,
+        ease: "Linear",
+      });
+    }
+
+    return true;
+  }
+
+  updateNpcAnimation(npcId: number, frame?: number, flipX?: boolean): boolean {
+    // Get the NPC sprite
+    const npcSprite = this.npcSprites.get(npcId);
+
+    if (!npcSprite) {
+      console.warn(`No NPC sprite found with ID ${npcId} for animation update`);
+      return false;
+    }
+
+    // Update the sprite's frame if provided
+    if (frame !== undefined) {
+      npcSprite.setFrame(frame);
+
+      // Also update the frame in the NPC data
+      const npcData = (npcSprite as any).npcData;
+      if (npcData) {
+        npcData.frame = frame;
+      }
+    }
+
+    // Update the sprite's flip state if provided
+    if (flipX !== undefined) {
+      npcSprite.setFlipX(flipX);
+
+      // Also update the flipX in the NPC data
+      const npcData = (npcSprite as any).npcData;
+      if (npcData) {
+        npcData.flipX = flipX;
+      }
+    }
+
+    return true;
+  }
+
+  renderNpc(npc: any): boolean {
+    // Check if this NPC is already rendered
+    if (this.npcSprites.has(npc.id)) {
+      console.warn(`NPC with ID ${npc.id} is already rendered`);
+      return false;
+    }
+
+    // Calculate position (center of the tile)
+    const posX = npc.x * TILE_SIZE + TILE_SIZE / 2;
+    const posY = npc.y * TILE_SIZE + TILE_SIZE / 2;
+
+    // Create the NPC sprite
+    let npcSprite: Phaser.GameObjects.Sprite;
+
+    // Try to get the TileManager from the scene
+    const tileManager = (this.scene as any).tileManager;
+
+    if (!tileManager) {
+      console.error("TileManager not found in scene, using fallback sprite");
+      // Create a fallback sprite if TileManager is not available
+      npcSprite = this.createFallbackNpcSprite(posX, posY);
+    } else {
+      // Create a temporary fallback sprite while we load the real one
+      npcSprite = this.scene.add.sprite(posX, posY, "npc-fallback");
+
+      // If we have frame and flipX from the server, apply them directly
+      if (npc.frame !== undefined) {
+        npcSprite.setFrame(npc.frame);
+      }
+
+      if (npc.flipX !== undefined) {
+        npcSprite.setFlipX(npc.flipX);
+      }
+
+      // Load the sprite asynchronously
+      this.loadNpcSpriteAsync(npc, npcSprite, tileManager);
+    }
+
+    // Store NPC data in the sprite for hover info
+    (npcSprite as any).npcData = npc;
+
+    // Add to container
+    this.mapContainer.add(npcSprite);
+
+    // Store reference
+    this.npcSprites.set(npc.id, npcSprite);
 
     return true;
   }

@@ -7,6 +7,7 @@ import { MapDataService } from "../services/MapDataService";
 import { TileManager, UiManager } from "../managers";
 import {
   TileUpdateEvent,
+  NpcUpdateEvent,
   webSocketService,
 } from "../services/WebSocketService";
 import WebFont from "webfontloader";
@@ -38,6 +39,7 @@ export class TileViewer extends Scene {
 
   // Event handlers
   private handleTileUpdateBound: (event: TileUpdateEvent) => void;
+  private handleNpcUpdateBound: (event: NpcUpdateEvent) => void;
   private handleConnectedBound: () => void;
   private handleDisconnectedBound: () => void;
 
@@ -47,6 +49,7 @@ export class TileViewer extends Scene {
 
     // Bind event handlers to this instance
     this.handleTileUpdateBound = this.handleTileUpdate.bind(this);
+    this.handleNpcUpdateBound = this.handleNpcUpdate.bind(this);
     this.handleConnectedBound = () =>
       console.log("Connected to WebSocket server");
     this.handleDisconnectedBound = () => {};
@@ -369,6 +372,9 @@ export class TileViewer extends Scene {
         // Listen for tile updates
         webSocketService.on("tileUpdate", this.handleTileUpdateBound);
 
+        // Listen for NPC updates
+        webSocketService.on("npcUpdate", this.handleNpcUpdateBound);
+
         // Handle connection events if needed
         webSocketService.on("connected", this.handleConnectedBound);
         webSocketService.on("disconnected", this.handleDisconnectedBound);
@@ -391,6 +397,69 @@ export class TileViewer extends Scene {
 
       // Update the tile sprite in the renderer
       this.mapRenderer.updateTile(tile.x, tile.y, event.newTileImageId);
+    }
+  }
+
+  handleNpcUpdate(event: NpcUpdateEvent) {
+    // Find the NPC in our local data
+    const npcIndex = this.npcs.findIndex((npc) => npc.id === event.npc.id);
+
+    if (npcIndex !== -1) {
+      // Store the old position
+      const oldX = this.npcs[npcIndex].x;
+      const oldY = this.npcs[npcIndex].y;
+
+      // Update the NPC position and animation properties in our local data
+      this.npcs[npcIndex].x = event.npc.x;
+      this.npcs[npcIndex].y = event.npc.y;
+
+      // Update frame and flipX if provided
+      if (event.npc.frame !== undefined) {
+        this.npcs[npcIndex].frame = event.npc.frame;
+      }
+
+      if (event.npc.flipX !== undefined) {
+        this.npcs[npcIndex].flipX = event.npc.flipX;
+      }
+
+      // Update the NPC sprite in the renderer
+      if (oldX !== event.npc.x || oldY !== event.npc.y) {
+        // Position changed, use position update method
+        this.mapRenderer.updateNpcPosition(
+          event.npc.id,
+          oldX,
+          oldY,
+          event.npc.x,
+          event.npc.y
+        );
+      } else if (
+        event.npc.frame !== undefined ||
+        event.npc.flipX !== undefined
+      ) {
+        // Only animation changed, update the sprite directly
+        this.mapRenderer.updateNpcAnimation(
+          event.npc.id,
+          event.npc.frame,
+          event.npc.flipX
+        );
+      }
+    } else {
+      // If the NPC isn't in our local data, it might be a new NPC
+      // We'll add it to our local data and render it
+      console.log("Received update for unknown NPC:", event.npc);
+
+      // Only add if it's for the current map or we're in overworld mode
+      if (
+        this.isOverworldMode ||
+        (this.mapInfo && event.npc.map_id === this.mapInfo.id)
+      ) {
+        this.npcs.push(event.npc);
+
+        // Preload the NPC sprite and then render it
+        this.tileManager.preloadNpcSprites([event.npc]).then(() => {
+          this.mapRenderer.renderNpc(event.npc);
+        });
+      }
     }
   }
 
@@ -725,6 +794,7 @@ export class TileViewer extends Scene {
 
       // Remove all event listeners
       webSocketService.off("tileUpdate", this.handleTileUpdateBound);
+      webSocketService.off("npcUpdate", this.handleNpcUpdateBound);
       webSocketService.off("connected", this.handleConnectedBound);
       webSocketService.off("disconnected", this.handleDisconnectedBound);
     } catch (error) {
